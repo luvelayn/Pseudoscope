@@ -1,0 +1,7 @@
+core/__pycache__
+core/merge_hits_v2.py
+pseudoscope_output
+find_intersections.py
+help.py
+/*.gff
+test_data/TAIR10
