@@ -58,7 +58,7 @@ def filter_hits(tblastn_file, out_dir, logger):
             filtered_hits_file = os.path.join(out_dir, "filtered_hits.tsv")
 
             with open(filtered_hits_file, 'w') as f:
-                # f.write("qseqid\tsseqid\tpident\tlength\tqstart\tqend\tsstart\tsend\tstrand\tevalue\n")
+                f.write("qseqid\tsseqid\tpident\tlength\tqstart\tqend\tsstart\tsend\tstrand\tevalue\n")
                 for hit in filtered_hits:
                     f.write(f"{hit['qseqid']}\t{hit['sseqid']}\t{hit['pident']}\t{hit['length']}\t{hit['qstart']}\t"
                             f"{hit['qend']}\t{hit['sstart']}\t{hit['send']}\t{hit['strand']}\t{hit['evalue']}\n")

@@ -11,7 +11,6 @@ from core.mask_genes import mask_genes
 from core.run_tblastn import run_tblastn
 from core.filter_hits import filter_hits
 from core.merge_hits import merge_hits
-from core.merge_hits_v2 import filter_redundant_alignments
 from core.run_exonerate import run_exonerate
 
 import os

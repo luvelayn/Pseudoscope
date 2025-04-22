@@ -1,10 +1,31 @@
+import csv
 import os
 
 
-def merge_hits(hits, max_intron_length, out_dir, logger):
+def merge_hits(input_tsv, max_intron_length, out_dir, logger):
         """Merge overlapping hits and closely located hits into pseudogene candidates"""
-        if not hits:
-            logger.warning("No hits to merge")
+        # Read hits from TSV file
+        hits = []
+        try:
+            with open(input_tsv, 'r') as f:
+                reader = csv.DictReader(f, delimiter='\t')
+                for row in reader:
+                    # Convert numeric fields
+                    hit = {
+                        'qseqid': row['qseqid'],
+                        'sseqid': row['sseqid'],
+                        'pident': float(row['pident']),
+                        'length': int(row['length']),
+                        'qstart': int(row['qstart']),
+                        'qend': int(row['qend']),
+                        'sstart': int(row['sstart']),
+                        'send': int(row['send']),
+                        'strand': row['strand'],
+                        'evalue': float(row['evalue'])
+                    }
+                    hits.append(hit)
+        except Exception as e:
+            logger.error(f"Error reading input file {input_tsv}: {e}")
             return []
             
         # Group hits by protein, chromosome and strand direction

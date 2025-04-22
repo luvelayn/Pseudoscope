@@ -84,7 +84,7 @@ def run_exonerate(pseudogenes, protein_file, genome_file, out_dir, logger):
                 '--showvulgar', 'no',
                 '--showalignment', 'no',
                 '--showtargetgff', 'yes',
-                # '--bestn', '1',
+                '--bestn', '1',
                 '--refine', 'full',
                 prot_file_path,
                 pg_file_path
