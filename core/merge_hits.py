@@ -1,9 +1,14 @@
 import csv
 import os
+from Bio import SeqIO
 
-
-def merge_hits(input_tsv, max_intron_length, out_dir, logger):
+def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
         """Merge overlapping hits and closely located hits into pseudogene candidates"""
+        # Load protein sequences and lengths
+        protein_lengths = {}
+        for record in SeqIO.parse(protein_file, "fasta"):
+            protein_lengths[record.id] = len(record.seq)
+
         # Read hits from TSV file
         hits = []
         try:
@@ -55,7 +60,8 @@ def merge_hits(input_tsv, max_intron_length, out_dir, logger):
                     'start': hit['sstart'],
                     'end': hit['send'],
                     'strand': hit['strand'],
-                    'evalue': hit['evalue']
+                    'evalue': hit['evalue'],
+                    'coverage': (hit['qend'] - hit['qstart']) / protein_lengths[protein]
                 })
                 continue
                 
@@ -65,23 +71,30 @@ def merge_hits(input_tsv, max_intron_length, out_dir, logger):
                 current_hit = group_hits[i]
                 last_hit = current_group[-1]
                 
-                # Check if hits are close enough to be part of the same pseudogene
-                # We consider hits within max_intron_length distance
-                # TODO подумать как можно мержить более точно
-                if current_hit['sstart'] <= last_hit['send'] + max_intron_length:
+                # Check if hits are the part of the same pseudogene
+                # if (current_hit['sstart'] <= last_hit['send'] + max_intron_length and
+                #     # Check if query positions make sense (considers direction)
+                #     ((current_hit['qstart'] + 20 > last_hit['qend'] and current_hit['strand'] == '+') or
+                #     (current_hit['qend'] < last_hit['qstart'] + 20 and current_hit['strand'] == '-'))):
+                #     current_group.append(current_hit)
+                if (current_hit['sstart'] <= last_hit['send'] + max_intron_length):
                     current_group.append(current_hit)
                 else:
                     # Create a pseudogene from the current group
                     if current_group:
                         best_evalue = min([h['evalue'] for h in current_group])
+                        start = min([h['sstart'] for h in current_group])
+                        end = max([h['send'] for h in current_group])
+                        coverage = (max([h['qend'] for h in current_group]) - min([h['qstart'] for h in current_group])) / protein_lengths[protein] 
                         
                         merged_pseudogenes.append({
                             'protein': protein,
                             'chrom': chrom,
-                            'start': min([h['sstart'] for h in current_group]),
-                            'end': max([h['send'] for h in current_group]),
+                            'start': start,
+                            'end': end,
                             'strand': strand,
-                            'evalue': best_evalue
+                            'evalue': best_evalue,
+                            'coverage': coverage
                         })
                     
                     # Start a new group with the current hit
@@ -90,14 +103,18 @@ def merge_hits(input_tsv, max_intron_length, out_dir, logger):
             # Don't forget the last group
             if current_group:
                 best_evalue = min([h['evalue'] for h in current_group])
+                start = min([h['sstart'] for h in current_group])
+                end = max([h['send'] for h in current_group])
+                coverage = (max([h['qend'] for h in current_group]) - min([h['qstart'] for h in current_group])) / protein_lengths[protein] 
                 
                 merged_pseudogenes.append({
                     'protein': protein,
                     'chrom': chrom,
-                    'start': min([h['sstart'] for h in current_group]),
-                    'end': max([h['send'] for h in current_group]),
+                    'start': start,
+                    'end': end,
                     'strand': strand,
-                    'evalue': best_evalue
+                    'evalue': best_evalue,
+                    'coverage': coverage
                 })
         
         # Resolve overlapping pseudogenes from different proteins
@@ -148,9 +165,9 @@ def merge_hits(input_tsv, max_intron_length, out_dir, logger):
         merged_hits_file = os.path.join(out_dir, "merged_hits.tsv")
 
         with open(merged_hits_file, 'w') as f:
-            f.write("protein\tchrom\tstart\tend\tstrand\tevalue\n")
+            f.write("protein\tchrom\tstart\tend\tstrand\tevalue\tcoverage\n")
             for pg in non_overlapping:
                 f.write(f"{pg['protein']}\t{pg['chrom']}\t{pg['start']}\t{pg['end']}\t"
-                        f"{pg['strand']}\t{pg['evalue']}\n")
+                        f"{pg['strand']}\t{pg['evalue']}\t{pg['coverage']}\n")
         
         return non_overlapping
