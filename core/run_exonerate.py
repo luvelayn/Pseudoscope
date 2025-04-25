@@ -1,10 +1,42 @@
 import os
 import subprocess
 import tempfile
+import csv
 from Bio import SeqIO
 
-def run_exonerate(pseudogenes, protein_file, genome_file, out_dir, logger):
+def run_exonerate(pseudogenes_file, protein_file, genome_file, out_dir, logger):
         """Run precise re-alignment with exonerate for each pseudogene candidate"""
+        pseudogenes = []
+
+        with open(pseudogenes_file, 'r') as f:
+            reader = csv.DictReader(f, delimiter='\t')
+            
+            for i, row in enumerate(reader, 1):
+                try:
+                    # Convert start and end to integers
+                    start = int(row['start'])
+                    end = int(row['end'])
+                    
+                    # Convert evalue and coverage to float
+                    evalue = float(row['evalue'])
+                    coverage = float(row['coverage'])
+                    strand = row['strand']
+                    
+                    pseudogenes.append({
+                        'protein': row['protein'],
+                        'chrom': row['chrom'],
+                        'start': start,
+                        'end': end,
+                        'strand': strand,
+                        'evalue': evalue,
+                        'coverage': coverage
+                    })
+                    
+                except ValueError as e:
+                    logger.warning(f"Error parsing line {i}: {e}")
+                except Exception as e:
+                    logger.error(f"Unexpected error processing line {i}: {e}")
+
         if not pseudogenes:
             logger.warning("No pseudogene candidates for re-alignment")
             return

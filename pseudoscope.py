@@ -11,6 +11,7 @@ from core.mask_genes import mask_genes
 from core.run_tblastn import run_tblastn
 from core.filter_hits import filter_hits
 from core.merge_hits import merge_hits
+# from core.merge_hits_v2 import merge_hits
 from core.run_exonerate import run_exonerate
 
 import os
@@ -98,6 +99,7 @@ class Pseudoscope:
         self.logger.info("Filtering and merging BLAST hits")
         hits = filter_hits(blast_out, self.filter_and_merge_dir, self.logger)
         pseudogenes = merge_hits(hits, self.protein_file, self.max_intron_length, self.filter_and_merge_dir, self.logger)
+        # pseudogenes = os.path.join(self.filter_and_merge_dir, "merged_hits.tsv")
 
         # Step 5: Precise re-alignment with exonerate
         self.logger.info("Running precise re-alignment with exonerate")
