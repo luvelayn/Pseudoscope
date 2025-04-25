@@ -97,7 +97,7 @@ class Pseudoscope:
         # Step 4: Filter and merge hits
         self.logger.info("Filtering and merging BLAST hits")
         hits = filter_hits(blast_out, self.filter_and_merge_dir, self.logger)
-        pseudogenes = merge_hits(hits, self.max_intron_length, self.filter_and_merge_dir, self.logger)
+        pseudogenes = merge_hits(hits, self.protein_file, self.max_intron_length, self.filter_and_merge_dir, self.logger)
 
         # Step 5: Precise re-alignment with exonerate
         self.logger.info("Running precise re-alignment with exonerate")

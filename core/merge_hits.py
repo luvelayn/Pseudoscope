@@ -59,6 +59,7 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
                     'chrom': chrom,
                     'start': hit['sstart'],
                     'end': hit['send'],
+                    'length': hit['send'] - hit['sstart'] + 1,
                     'strand': hit['strand'],
                     'evalue': hit['evalue'],
                     'coverage': (hit['qend'] - hit['qstart']) / protein_lengths[protein]
@@ -74,8 +75,8 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
                 # Check if hits are the part of the same pseudogene
                 # if (current_hit['sstart'] <= last_hit['send'] + max_intron_length and
                 #     # Check if query positions make sense (considers direction)
-                #     ((current_hit['qstart'] + 20 > last_hit['qend'] and current_hit['strand'] == '+') or
-                #     (current_hit['qend'] < last_hit['qstart'] + 20 and current_hit['strand'] == '-'))):
+                #     ((current_hit['qstart'] + 100 > last_hit['qend'] and current_hit['strand'] == '+') or
+                #     (current_hit['qend'] < last_hit['qstart'] + 100 and current_hit['strand'] == '-'))):
                 #     current_group.append(current_hit)
                 if (current_hit['sstart'] <= last_hit['send'] + max_intron_length):
                     current_group.append(current_hit)
@@ -92,6 +93,7 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
                             'chrom': chrom,
                             'start': start,
                             'end': end,
+                            'length': end - start + 1,
                             'strand': strand,
                             'evalue': best_evalue,
                             'coverage': coverage
@@ -112,6 +114,7 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
                     'chrom': chrom,
                     'start': start,
                     'end': end,
+                    'length': end - start + 1,
                     'strand': strand,
                     'evalue': best_evalue,
                     'coverage': coverage
@@ -133,7 +136,7 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
             current['chrom'] == non_overlapping[-1]['chrom'] and 
             current['start'] <= non_overlapping[-1]['end']):
             
-                if current['evalue'] < non_overlapping[-1]['evalue']:
+                if current['length'] > non_overlapping[-1]['length']:
                     non_overlapping.pop()
                 else:
                     i += 1
@@ -151,9 +154,8 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
                 non_overlapping.append(current)
                 i += 1
             else:
-                # Select best pseudogene based on e-value
-                # TODO можно сделать поточнее
-                best = min(overlapping, key=lambda x: x['evalue'])
+                # Select best pseudogene based on lentgh
+                best = max(overlapping, key=lambda x: x['length'])
                 non_overlapping.append(best)
             
                 # Skip all overlapping pseudogenes
