@@ -52,24 +52,13 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
             if key not in grouped_hits:
                 grouped_hits[key] = []
             grouped_hits[key].append(hit)
-
+        
         # Sort hits within each group by position
         for key in grouped_hits:
             grouped_hits[key].sort(key=lambda x: x['sstart'])
-
-        pseudogene_candidates = []
-
-        # Function to check if two hits should be in the same cluster 
-        # Suggesting prev_hit start is before curr_hit start
-        def can_be_merged(prev_hit, curr_hit):
-            if (curr_hit['sstart'] <= prev_hit['send'] + max_intron_length and
-              # Check if query positions make sense (considers direction)
-              ((curr_hit['qstart'] + 50 > prev_hit['qend'] and curr_hit['strand'] == '+') or
-              (curr_hit['qend'] < prev_hit['qstart'] + 50 and curr_hit['strand'] == '-'))):
-                return True
-              
-            return False
-                
+        
+        merged_pseudogenes = []
+        
         # Process each group
         for key, group_hits in grouped_hits.items():
             protein, chrom, strand = key
@@ -77,60 +66,57 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
             # Processing if only one hit
             if len(group_hits) == 1:
                 hit = group_hits[0]
-                pseudogene_candidates.append({
+                merged_pseudogenes.append({
                     'protein': protein,
                     'chrom': chrom,
                     'start': hit['sstart'],
                     'end': hit['send'],
                     'length': hit['send'] - hit['sstart'] + 1,
-                    'strand': strand,
+                    'strand': hit['strand'],
                     'evalue': hit['evalue'],
                     'coverage': (hit['qend'] - hit['qstart']) / protein_lengths[protein]
                 })
                 continue
-            
-            # Create non-overlapping clusters 
-            remaining_hits = group_hits.copy()
-            clusters = []
-            
-            while remaining_hits:
-                # Start a new cluster with the first remaining hit
-                current_cluster = [remaining_hits.pop(0)]
                 
-                # Flag to indicate if we added a hit in this pass
-                added_hit = True
+            # Check for overlapping or nearby hits
+            current_group = [group_hits[0]]
+            for i in range(1, len(group_hits)):
+                current_hit = group_hits[i]
+                last_hit = current_group[-1]
                 
-                # Keep extending the cluster as long as we can add hits
-                while added_hit:
-                    added_hit = False
-                    
-                    # Try each remaining hit
-                    i = 0
-                    while i < len(remaining_hits):
-                        curr_hit = remaining_hits[i]
-                        prev_hit = current_cluster[-1]
+                # Check if hits are the part of the same pseudogene
+                if (current_hit['sstart'] <= last_hit['send'] + max_intron_length):
+                    current_group.append(current_hit)
+                else:
+                    # Create a pseudogene from the current group
+                    if current_group:
+                        best_evalue = min([h['evalue'] for h in current_group])
+                        start = min([h['sstart'] for h in current_group])
+                        end = max([h['send'] for h in current_group])
+                        coverage = (max([h['qend'] for h in current_group]) - min([h['qstart'] for h in current_group])) / protein_lengths[protein] 
                         
-                        if can_be_merged(prev_hit, curr_hit):
-                            current_cluster.append(curr_hit)
-                            remaining_hits.pop(i)
-                            added_hit = True
-                        else:
-                            i += 1
-                
-                # Add the completed cluster
-                clusters.append(current_cluster)
-            
-            # Convert clusters to pseudogene candidates
-            for cluster in clusters:
-                best_evalue = min([h['evalue'] for h in cluster])
-                start = min([h['sstart'] for h in cluster])
-                end = max([h['send'] for h in cluster])
-                qstart = min([h['qstart'] for h in cluster])
-                qend = max([h['qend'] for h in cluster])
+                        merged_pseudogenes.append({
+                            'protein': protein,
+                            'chrom': chrom,
+                            'start': start,
+                            'end': end,
+                            'length': end - start + 1,
+                            'strand': strand,
+                            'evalue': best_evalue,
+                            'coverage': coverage
+                        })
                     
-                coverage = (qend - qstart + 1) / protein_lengths[protein]
+                    # Start a new group with the current hit
+                    current_group = [current_hit]
+            
+            # Don't forget the last group
+            if current_group:
+                best_evalue = min([h['evalue'] for h in current_group])
+                start = min([h['sstart'] for h in current_group])
+                end = max([h['send'] for h in current_group])
+                coverage = (max([h['qend'] for h in current_group]) - min([h['qstart'] for h in current_group])) / protein_lengths[protein] 
                 
-                pseudogene_candidates.append({
+                merged_pseudogenes.append({
                     'protein': protein,
                     'chrom': chrom,
                     'start': start,
@@ -141,42 +127,111 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
                     'coverage': coverage
                 })
 
-        # Function to check if two pseudogenes overlap
-        def overlaps(pg1, pg2):
-            # Only consider overlap if they're on the same chromosome and protein
-            if (pg1['protein'] != pg2['protein']) or (pg1['chrom'] != pg2['chrom']) or (pg1['strand'] != pg2['strand']):
-                return False
-            
-            # Check for genomic overlap
-            return max(pg1['start'], pg2['start']) <= min(pg1['end'], pg2['end'])
-
-        # Filter overlapping pseudogenes to keep the longest
-        # Sort candidates by length (descending)
-        pseudogene_candidates.sort(key=lambda x: x['length'], reverse=True)
-
-        merged_pseudogenes = []
-        for candidate in pseudogene_candidates:
-            # Check if this candidate overlaps with any existing accepted pseudogene
-            if not any(overlaps(candidate, pg) for pg in merged_pseudogenes):
-                merged_pseudogenes.append(candidate)
-
         logger.info(f"Created {len(merged_pseudogenes)} pseudogene candidates after merging same protein hits")
 
-        # Resolve overlapping pseudogenes from different proteins
+        # Merge overlapping pseudogenes from different but similar proteins
+        # Sort by chromosome, strand and position
         merged_pseudogenes.sort(key=lambda x: (x['chrom'], x['strand'], x['start']))
+        
+        # Create a cache for protein similarity calculations
+        similarity_cache = {}
+        
+        # Define similarity threshold
+        similarity_threshold = 50  # Adjust this value as needed
+
+        # Define maximum overlap percentage for comparing pseudogenes
+        max_overlap_percentage = 20  # Only compare pseudogenes with less than 20% overlap
+        
+        # Initialize the list for pseudogenes after similar protein merging
+        similar_protein_merged = []
+        i = 0
+        
+        while i < len(merged_pseudogenes):
+            current = merged_pseudogenes[i]
+            merged_group = [current]
+            j = i + 1
+            
+            # Find pseudogenes that might qualify for merging (they overlap but not too much)
+            while (j < len(merged_pseudogenes) and 
+                   merged_pseudogenes[j]['chrom'] == current['chrom'] and
+                   merged_pseudogenes[j]['strand'] == current['strand'] and
+                   # Check if they overlap
+                   merged_pseudogenes[j]['start'] <= current['end']):
+                
+                next_pg = merged_pseudogenes[j]
+
+                # Calculate overlap
+                overlap_start = max(current['start'], next_pg['start'])
+                overlap_end = min(current['end'], next_pg['end'])
+                overlap_length = max(0, overlap_end - overlap_start + 1)
+                
+                # Calculate overlap percentage relative to both pseudogenes
+                current_overlap_percent = (overlap_length / current['length']) * 100
+                next_overlap_percent = (overlap_length / next_pg['length']) * 100
+                
+                # Skip if overlap is too large
+                if current_overlap_percent > max_overlap_percentage or next_overlap_percent > max_overlap_percentage:
+                    j += 1
+                    continue
+                
+                # Calculate protein similarity if not already in cache
+                protein_pair = tuple(sorted([current['protein'], next_pg['protein']]))
+                if protein_pair not in similarity_cache:
+                    seq1 = protein_sequences[current['protein']]
+                    seq2 = protein_sequences[next_pg['protein']]
+                    similarity_cache[protein_pair] = calculate_protein_similarity(seq1, seq2)
+                
+                # If proteins are similar enough, merge the pseudogenes
+                if similarity_cache[protein_pair] >= similarity_threshold:
+                    merged_group.append(next_pg)
+                
+                j += 1
+            
+            if len(merged_group) == 1:
+                # No merging needed
+                similar_protein_merged.append(current)
+                i += 1
+            else:
+                # Create a merged pseudogene
+                start = min([pg['start'] for pg in merged_group])
+                end = max([pg['end'] for pg in merged_group])
+                
+                # Choose the pseudogene with best E-value as the representative
+                best_pg = min(merged_group, key=lambda x: x['evalue'])
+                
+                # Combine coverage, but cap at 1.0
+                total_coverage = min(1.0, sum([pg['coverage'] for pg in merged_group]))
+                
+                similar_protein_merged.append({
+                    'protein': best_pg['protein'],  # Use protein from best e-value pseudogene
+                    'chrom': current['chrom'],
+                    'start': start,
+                    'end': end,
+                    'length': end - start + 1,
+                    'strand': current['strand'],
+                    'evalue': best_pg['evalue'],
+                    'coverage': total_coverage
+                })
+                
+                # Skip all merged pseudogenes
+                i = j
+        
+        logger.info(f"Created {len(similar_protein_merged)} pseudogene candidates after merging pseudogenes from similar proteins")
+
+        # Resolve remaining overlapping pseudogenes from different protein or strand
+        similar_protein_merged.sort(key=lambda x: (x['chrom'], x['start']))
         
         # Identify overlapping pseudogenes
         non_overlapping = []
         i = 0
-        while i < len(merged_pseudogenes):
-            current = merged_pseudogenes[i]
+        while i < len(similar_protein_merged):
+            current = similar_protein_merged[i]
             overlapping = [current]
             j = i + 1
             
             # Check if overlaps with previously found non-overlapping
             if (non_overlapping and 
-            current['chrom'] == non_overlapping[-1]['chrom'] and
-            current['strand'] == non_overlapping[-1]['strand'] and 
+            current['chrom'] == non_overlapping[-1]['chrom'] and 
             current['start'] <= non_overlapping[-1]['end']):
             
                 if current['length'] > non_overlapping[-1]['length']:
@@ -186,11 +241,10 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
                     continue
 
             # Find all pseudogenes that overlap with current
-            while (j < len(merged_pseudogenes) and 
-            merged_pseudogenes[j]['chrom'] == current['chrom'] and 
-            merged_pseudogenes[j]['strand'] == current['strand'] and
-            merged_pseudogenes[j]['start'] <= current['end']):
-                overlapping.append(merged_pseudogenes[j])
+            while (j < len(similar_protein_merged) and 
+            similar_protein_merged[j]['chrom'] == current['chrom'] and
+            similar_protein_merged[j]['start'] <= current['end']):
+                overlapping.append(similar_protein_merged[j])
                 j += 1
                 
             # If none overlaps
@@ -205,7 +259,7 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
                 # Skip all overlapping pseudogenes
                 i = j
         
-        logger.info(f"Created {len(non_overlapping)} pseudogene candidates after merging overlapping different protein hits")
+        logger.info(f"Created {len(non_overlapping)} pseudogene candidates after filtering different protein/strand hits")
         
         # Merge close alignments (<2500) from different proteins
         sorted_alignments = sorted(non_overlapping, key=lambda x: (x['chrom'], x['strand'], x['start']))
@@ -236,7 +290,7 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
                     similarity_cache[pair_key] = calculate_protein_similarity(seq1, seq2)
                 
                 # Check if proteins are similar enough
-                similarity_threshold = 100
+                similarity_threshold = 40
                 if similarity_cache[pair_key] >= similarity_threshold:
                     merged_group.append(next_alignment)
                     
@@ -273,7 +327,7 @@ def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
         # # Filter out alignments with coverage < 0.2
         # filtered_alignments = [a for a in merged_alignments if a['coverage'] >= 0.2]
         
-        logger.info(f"Final result: {len(merged_alignments)} pseudogene candidates after merging close different protein hits")
+        logger.info(f"Final result: {len(merged_alignments)} pseudogene candidates after merging close alignments from different proteins")
         
         # Save merged hits to file
         merged_hits_file = os.path.join(out_dir, "merged_hits.tsv")

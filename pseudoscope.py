@@ -12,6 +12,7 @@ from core.run_tblastn import run_tblastn
 from core.filter_hits import filter_hits
 from core.merge_hits import merge_hits
 # from core.merge_hits_v2 import merge_hits
+# from core.merge_hits_v3 import merge_hits
 from core.run_exonerate import run_exonerate
 
 import os
