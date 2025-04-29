@@ -14,6 +14,7 @@ from core.merge_hits import merge_hits
 # from core.merge_hits_v2 import merge_hits
 # from core.merge_hits_v3 import merge_hits
 from core.run_exonerate import run_exonerate
+from core.run_tfasty import run_tfasty
 
 import os
 import argparse
@@ -51,14 +52,16 @@ class Pseudoscope:
         self.extract_proteins_dir = os.path.join(self.temp_dir, "extract_proteins_out")
         self.blast_dir = os.path.join(self.temp_dir, "blast_out")
         self.filter_and_merge_dir = os.path.join(self.temp_dir, "filtered_and_merged_hits")
-        self.exonerate_dir = os.path.join(self.temp_dir, "exonerate_out")
+        # self.exonerate_dir = os.path.join(self.temp_dir, "exonerate_out")
+        self.tfasty_dir = os.path.join(self.temp_dir, "tfasty_out")
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs(self.temp_dir, exist_ok=True)
         os.makedirs(self.mask_genes_dir, exist_ok=True)
         os.makedirs(self.extract_proteins_dir, exist_ok=True)
         os.makedirs(self.blast_dir, exist_ok=True)
         os.makedirs(self.filter_and_merge_dir, exist_ok=True)
-        os.makedirs(self.exonerate_dir, exist_ok=True)
+        # os.makedirs(self.exonerate_dir, exist_ok=True)
+        os.makedirs(self.tfasty_dir, exist_ok=True)
         
         # Set up logging
         self.logger = _setup_logging(self.output_dir)
@@ -102,9 +105,13 @@ class Pseudoscope:
         pseudogenes = merge_hits(hits, self.protein_file, self.max_intron_length, self.filter_and_merge_dir, self.logger)
         # pseudogenes = os.path.join(self.filter_and_merge_dir, "merged_hits.tsv")
 
-        # Step 5: Precise re-alignment with exonerate
-        self.logger.info("Running precise re-alignment with exonerate")
-        run_exonerate(pseudogenes, self.protein_file, genes_masked__genome, self.exonerate_dir, self.logger)
+        # # Step 5: Precise re-alignment with exonerate
+        # self.logger.info("Running precise re-alignment with exonerate")
+        # run_exonerate(pseudogenes, self.protein_file, genes_masked__genome, self.exonerate_dir, self.logger)
+
+        # Step 5: Precise re-alignment with tfasty
+        self.logger.info("Running precise re-alignment with tfasty")
+        run_tfasty(pseudogenes, self.protein_file, genes_masked__genome, self.tfasty_dir, self.logger)
 
         # # Step 6: Classify pseudogenes
         # self.logger.info("Classifying pseudogenes")

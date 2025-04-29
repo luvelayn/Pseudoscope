@@ -2,7 +2,11 @@ core/__pycache__
 pseudoscope_output
 find_intersections.py
 help.py
-/*.gff
+help_v2.py
+*.gff
+*.tsv
+*.txt
+*.fa
 test_data/TAIR10
 analyze.py
 comparasion_res
