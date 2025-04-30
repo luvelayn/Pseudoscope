@@ -1,23 +1,12 @@
 import csv
 import os
 from Bio import SeqIO
-from Bio import pairwise2
-
-def calculate_protein_similarity(seq1, seq2):
-    """Calculate sequence identity between two protein sequences"""
-    alignments = pairwise2.align.globalxx(seq1, seq2)
-    best_alignment = alignments[0]
-    matches = sum(a == b for a, b in zip(best_alignment.seqA, best_alignment.seqB))
-    identity = (matches / len(best_alignment.seqA)) * 100
-    return identity
 
 def merge_hits(input_tsv, protein_file, max_intron_length, out_dir, logger):
         """Merge overlapping hits and closely located hits into pseudogene candidates"""
-        # Load protein sequences and lengths
-        protein_sequences = {}
+        # Load protein lengths
         protein_lengths = {}
         for record in SeqIO.parse(protein_file, "fasta"):
-            protein_sequences[record.id] = str(record.seq)
             protein_lengths[record.id] = len(record.seq)
 
         # Read hits from TSV file
