@@ -1,253 +1,220 @@
 import os
 import subprocess
 import tempfile
-import csv
-import re
 from Bio import SeqIO
 
-def run_tfasty(pseudogenes_file, protein_file, genome_file, out_dir, logger):
-        """Run precise re-alignment with tfasty for each pseudogene candidate"""
-        pseudogenes = []
+def run_tfasty(exon_clusters, protein_file, genome_file, out_dir, logger):
+    """Run precise re-alignment with tfasty for each exon separately, then merge into pseudogenes
+    
+    Parameters:
+    -----------
+    exon_clusters : list of lists
+        Each inner list contains dictionaries representing exons of a pseudogene
+        [
+            [
+                {'protein': 'protA', 'chrom': 'chr1', 'start': 1000, 'end': 1500, 'strand': '-', 'evalue': 9.26e-17},
+                {'protein': 'protA', 'chrom': 'chr1', 'start': 1700, 'end': 2000', 'strand': '-', 'evalue': 9.26e-17}
+            ],
+            [
+                {'protein': 'protB', 'chrom': 'chr2', 'start': 5000, 'end': 5200', 'strand': '+', 'evalue': 9.26e-17}
+            ],
+            ...
+        ]
+    protein_file : str
+        Path to the protein fasta file
+    genome_file : str
+        Path to the genome fasta file
+    out_dir : str
+        Directory to store output files
+    logger : logging.Logger
+        Logger object for reporting
+    """
+    if not exon_clusters:
+        logger.warning("No pseudogene candidates for re-alignment")
+        return
 
-        with open(pseudogenes_file, 'r') as f:
-            reader = csv.DictReader(f, delimiter='\t')
-            
-            for i, row in enumerate(reader, 1):
-                try:
-                    # Convert start and end to integers
-                    start = int(row['start'])
-                    end = int(row['end'])
-                    
-                    # Convert evalue and coverage to float
-                    evalue = float(row['evalue'])
-                    coverage = float(row['coverage'])
-                    strand = row['strand']
-                    
-                    pseudogenes.append({
-                        'protein': row['protein'],
-                        'chrom': row['chrom'],
-                        'start': start,
-                        'end': end,
-                        'strand': strand,
-                        'evalue': evalue,
-                        'coverage': coverage
-                    })
-                    
-                except ValueError as e:
-                    logger.warning(f"Error parsing line {i}: {e}")
-                except Exception as e:
-                    logger.error(f"Unexpected error processing line {i}: {e}")
-
-        if not pseudogenes:
-            logger.warning("No pseudogene candidates for re-alignment")
-            return
-
-        # Extract protein sequences
-        protein_seqs = {}
-        for record in SeqIO.parse(protein_file, "fasta"):
-            protein_seqs[record.id] = str(record.seq)
-            
-        # Extract genome sequences
-        genome_seqs = {}
-        for record in SeqIO.parse(genome_file, "fasta"):
-            genome_seqs[record.id] = str(record.seq)
-            
-        # Extract pseudogene candidates with flanking sequence
-        pseudogene_regions = []
-        for i, pg in enumerate(pseudogenes):
-            try:
-                chrom = pg['chrom']
-                if chrom not in genome_seqs:
-                    logger.warning(f"Chromosome {chrom} not found in genome, skipping pseudogene")
-                    continue
-                    
-                # Add flanking sequence (200 nt on each side for tfasty)
-                flank = 200
-                start = max(0, pg['start'] - flank)
-                end = min(len(genome_seqs[chrom]), pg['end'] + flank)
-                
-                seq = genome_seqs[chrom][start:end]
-                protein = pg['protein']
-                
-                if protein not in protein_seqs:
-                    logger.warning(f"Protein {protein} not found, skipping pseudogene")
-                    continue
-                
-                pseudogene_regions.append({
-                    'id': f"PG{i+1}",
-                    'chrom': chrom,
-                    'start': start,
-                    'original_start': pg['start'],  # Keep original coordinates
-                    'end': end,
-                    'original_end': pg['end'],      # Keep original coordinates 
-                    'seq': seq,
-                    'protein': protein,
-                    'protein_seq': protein_seqs[protein],
-                    'strand': pg['strand']
-                })
-            except Exception as e:
-                logger.error(f"Error processing pseudogene {i}: {e}")
-                
-        logger.info(f"Prepared {len(pseudogene_regions)} pseudogene regions for re-alignment")
-                
-        # Create temporary file for all pseudogene sequences
-        pseudogene_seqs_file = os.path.join(out_dir, "pseudogene_candidates_seqs.fa")
-        with open(pseudogene_seqs_file, 'w') as f:
-            for pg in pseudogene_regions:
-                f.write(f">{pg['id']} chrom={pg['chrom']} start={pg['start']} end={pg['end']} protein={pg['protein']}\n")
-                f.write(f"{pg['seq']}\n")
+    # Extract protein sequences
+    protein_seqs = {}
+    for record in SeqIO.parse(protein_file, "fasta"):
+        protein_seqs[record.id] = str(record.seq)
         
-        # Run tfasty for each pseudogene-protein pair
-        results = []
-        tfasty_output_dir = os.path.join(out_dir, "tfasty_alignments")
-        os.makedirs(tfasty_output_dir, exist_ok=True)
+    # Extract genome sequences
+    genome_seqs = {}
+    for record in SeqIO.parse(genome_file, "fasta"):
+        genome_seqs[record.id] = str(record.seq)
+    
+    # Create directories for output
+    tfasty_output_dir = os.path.join(out_dir, "tfasty_alignments")
+    os.makedirs(tfasty_output_dir, exist_ok=True)
+    
+    # List to store all pseudogene results
+    pseudogene_results = []
+    
+    # Process each cluster separately
+    for cluster_idx, exon_cluster in enumerate(exon_clusters):
+        if not exon_cluster:
+            continue
         
-        for pg in pseudogene_regions:
-            # Create temporary files for protein and dna sequences
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.fa', delete=False) as pg_file, \
-                 tempfile.NamedTemporaryFile(mode='w', suffix='.fa', delete=False) as prot_file:
-                
-                pg_file.write(f">{pg['id']}\n{pg['seq']}\n")
-                prot_file.write(f">{pg['protein']}\n{pg['protein_seq']}\n")
-                
-                pg_file_path = pg_file.name
-                prot_file_path = prot_file.name
+        first_exon = exon_cluster[0]
+        chrom = first_exon['chrom']
+        protein = first_exon['protein']
+        strand = first_exon['strand']
+        
+        # Check if protein and chromosome exist
+        if protein not in protein_seqs:
+            logger.warning(f"Protein {protein} not found in protein file. Skipping cluster {cluster_idx+1}.")
+            continue
             
-            # Output for tfasty results
-            alignment_out = os.path.join(tfasty_output_dir, f"{pg['id']}_alignment.txt")
-            gff_out = os.path.join(tfasty_output_dir, f"{pg['id']}_alignment.gff")
-            
-            # Set up tfasty commad
-            tfasty_cmd = f"tfasty36 -m 10 {prot_file_path} {pg_file_path} > {alignment_out}"
-            
+        if chrom not in genome_seqs:
+            logger.warning(f"Chromosome {chrom} not found in genome file. Skipping cluster {cluster_idx+1}.")
+            continue
+        
+        # Generate unique ID for this pseudogene
+        pseudogene_id = f"PG{cluster_idx+1}"
+        
+        # Process each exon in the cluster
+        exon_results = []
+        
+        for exon_idx, exon in enumerate(exon_cluster):
             try:
+                # Add flanking sequence (30 nt on each side for tfasty)
+                flank = 30
+                exon_start = max(0, exon['start'] - flank)
+                exon_end = min(len(genome_seqs[chrom]), exon['end'] + flank)
+                
+                # Extract sequence with flanking regions
+                exon_seq = genome_seqs[chrom][exon_start:exon_end]
+                
+                # Create temporary files for exon and protein sequences
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.fa', delete=False) as exon_file, \
+                     tempfile.NamedTemporaryFile(mode='w', suffix='.fa', delete=False) as prot_file:
+                    
+                    exon_id = f"{pseudogene_id}_exon{exon_idx+1}"
+                    exon_file.write(f">{exon_id}\n{exon_seq}\n")
+                    prot_file.write(f">{protein}\n{protein_seqs[protein]}\n")
+                    
+                    exon_file_path = exon_file.name
+                    prot_file_path = prot_file.name
+                
+                # Output file for tfasty results
+                alignment_out = os.path.join(tfasty_output_dir, f"{exon_id}_alignment.txt")
+                
+                # Run tfasty
+                tfasty_cmd = f"tfasty36 -m 10 {prot_file_path} {exon_file_path} > {alignment_out}"
+                
                 logger.debug(f"Running command: {tfasty_cmd}")
-                # Use shell=True to handle the redirection properly
                 subprocess.run(tfasty_cmd, check=True, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 
-                # Parse tfasty output and convert to GFF format
-                gff_lines = _parse_tfasty_to_gff(alignment_out, pg, logger)
+                # Parse tfasty output
+                exon_info = {
+                    'id': exon_id,
+                    'chrom': chrom,
+                    'start': exon_start,
+                    'end': exon_end,
+                    'protein': protein,
+                    'protein_seq': protein_seqs[protein],
+                    'strand': strand
+                }
                 
-                # Save GFF results
-                with open(gff_out, 'w') as out:
-                    for line in gff_lines:
-                        out.write(line + '\n')
+                parsed_alignment = _parse_tfasty_output(alignment_out, exon_info, logger)
                 
-                results.append({
-                    'id': pg['id'],
-                    'chrom': pg['chrom'],
-                    'protein': pg['protein'],
-                    'gff_file': gff_out,
-                    'gff_lines': gff_lines
-                })
+                if parsed_alignment:
+                    # Add the exon alignment to our results
+                    exon_results.append({
+                        'id': exon_id,
+                        'alignment': parsed_alignment,
+                        'offset': exon_start  # Store for coordinate conversion
+                    })
                 
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Error running tfasty for {pg['id']}: {e}")
-                if hasattr(e, 'stderr'):
-                    logger.error(e.stderr)
-            
-            # Clean up temporary files
-            try:
-                os.unlink(pg_file_path)
-                os.unlink(prot_file_path)
-            except:
-                pass
-                
-        # Combine all GFF files
-        tfasty_out = os.path.join(out_dir, "tfasty_results.gff")
-
-        with open(tfasty_out, 'w') as f:
-            f.write("##gff-version 3\n")
-            for result in results:
-                for line in result['gff_lines']:
-                    f.write(line + '\n')
+                # Clean up temporary files
+                try:
+                    os.unlink(exon_file_path)
+                    os.unlink(prot_file_path)
+                except:
+                    pass
                     
-        logger.info(f"Completed tfasty re-alignment for {len(results)} pseudogenes")
+            except Exception as e:
+                logger.error(f"Error processing exon {exon_idx+1} in cluster {cluster_idx+1}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
         
-        # Generate a summary file
-        summary_file = os.path.join(out_dir, "pseudogene_summary.tsv")
-        with open(summary_file, 'w') as f:
-            f.write("pseudogene_id\tchrom\tstart\tend\tstrand\tparent_protein\t"
-                    "frameshifts\tinsertions\tdeletions\tstop_codons\t"
-                    "exon_count\tcoverage\tidentity\tevalue\n")
-            
-            for result in results:
-                if not result['gff_lines']:
-                    continue
-                
-                # Extract pseudogene features
-                pseudogene_line = None
-                exon_count = 0
-                
-                for line in result['gff_lines']:
-                    if "\tpseudogene\t" in line:
-                        pseudogene_line = line
-                    elif "\texon\t" in line:
-                        exon_count += 1
-                
-                if pseudogene_line:
-                    parts = pseudogene_line.strip().split('\t')
-                    if len(parts) >= 9:
-                        chrom = parts[0]
-                        start = parts[3]
-                        end = parts[4]
-                        strand = parts[6]
-                        attr = parts[8]
-                        
-                        # Extract attributes
-                        id_match = re.search(r'ID=([^;]+)', attr)
-                        parent_match = re.search(r'Parent=([^;]+)', attr)
-                        evalue_match = re.search(r'evalue=([^;]+)', attr)
-                        identity_match = re.search(r'identity=([^;]+)', attr)
-                        coverage_match = re.search(r'coverage=([^;]+)', attr)
-                        frameshifts_match = re.search(r'frameshifts=([^;]+)', attr)
-                        insertions_match = re.search(r'insertions=([^;]+)', attr)
-                        deletions_match = re.search(r'deletions=([^;]+)', attr)
-                        stop_codons_match = re.search(r'stop_codons=([^;]+)', attr)
-                        
-                        pg_id = id_match.group(1) if id_match else result['id']
-                        parent = parent_match.group(1) if parent_match else result['protein']
-                        evalue = evalue_match.group(1) if evalue_match else "NA"
-                        identity = identity_match.group(1) if identity_match else "NA"
-                        coverage = coverage_match.group(1) if coverage_match else "NA"
-                        frameshifts = frameshifts_match.group(1) if frameshifts_match else "0"
-                        insertions = insertions_match.group(1) if insertions_match else "0"
-                        deletions = deletions_match.group(1) if deletions_match else "0"
-                        stop_codons = stop_codons_match.group(1) if stop_codons_match else "0"
-                        
-                        f.write(f"{pg_id}\t{chrom}\t{start}\t{end}\t{strand}\t{parent}\t"
-                                f"{frameshifts}\t{insertions}\t{deletions}\t{stop_codons}\t"
-                                f"{exon_count}\t{coverage}\t{identity}\t{evalue}\n")
+        # Skip if no exons were successfully aligned
+        if not exon_results:
+            logger.warning(f"No successful alignments for cluster {cluster_idx+1}. Skipping.")
+            continue
         
-        return tfasty_out
+        # Now merge exon alignments into a pseudogene
+        merged_pseudogene = _merge_exons(pseudogene_id, exon_results, chrom, protein, strand, protein_seqs)
+        
+        if merged_pseudogene:
+            # Add to our results
+            pseudogene_results.append({
+                'id': pseudogene_id,
+                'chrom': chrom,
+                'protein': protein,
+                'strand': strand,
+                'start': merged_pseudogene['start'],
+                'end': merged_pseudogene['end'],
+                'gff_lines': merged_pseudogene['gff_lines'],
+                'exon_count': len(merged_pseudogene['exons']),
+                'frameshifts': merged_pseudogene['frameshifts'],
+                'insertions': merged_pseudogene['insertions'],
+                'deletions': merged_pseudogene['deletions'],
+                'stop_codons': merged_pseudogene['stop_codons'],
+                'score': merged_pseudogene['score'],
+                'evalue': merged_pseudogene['evalue'],
+                'identity': merged_pseudogene['identity'],
+                'coverage': merged_pseudogene['coverage']
+            })
+    
+    # Write GFF output for all pseudogenes
+    tfasty_out = os.path.join(out_dir, "tfasty_results.gff")
+    with open(tfasty_out, 'w') as f:
+        f.write("##gff-version 3\n")
+        for pg in pseudogene_results:
+            for line in pg['gff_lines']:
+                f.write(line + '\n')
+    
+    logger.info(f"Completed tfasty re-alignment. Created {len(pseudogene_results)} pseudogenes.")
+    
+    # Write summary file
+    summary_file = os.path.join(out_dir, "pseudogene_summary.tsv")
+    with open(summary_file, 'w') as f:
+        f.write("pseudogene_id\tchrom\tstart\tend\tstrand\tparent_protein\t"
+                "frameshifts\tinsertions\tdeletions\tstop_codons\t"
+                "exon_count\tcoverage\tidentity\tevalue\n")
+        
+        for pg in pseudogene_results:
+            f.write(f"{pg['id']}\t{pg['chrom']}\t{pg['start']}\t{pg['end']}\t{pg['strand']}\t{pg['protein']}\t"
+                    f"{pg['frameshifts']}\t{pg['insertions']}\t{pg['deletions']}\t{pg['stop_codons']}\t"
+                    f"{pg['exon_count']}\t{pg['coverage']:.2f}\t{pg['identity']:.2f}\t{pg['evalue']}\n")
+    
+    return tfasty_out
 
-def _parse_tfasty_to_gff(tfasty_output, pseudogene_info, logger):
-    """Parse tfasty output (format 10) and convert to GFF3 format"""
-    gff_lines = []
+def _parse_tfasty_output(tfasty_output, exon_info, logger):
+    """Parse tfasty output (format 10) and extract alignment information"""
+    alignments = []
     
     try:
         # Read the tfasty output file
         with open(tfasty_output, 'r') as f:
             content = f.readlines()
         
-        # Storage for alignments
-        alignments = []
-        
         # Extract ids
-        pseudogene_id = pseudogene_info['id']
-        protein_id = pseudogene_info['protein']
+        exon_id = exon_info['id']
+        protein_id = exon_info['protein']
         
         # Parse the file
         i = 0
-        while not content[i].startswith(">>><<<"):
+        while i < len(content) and not content[i].startswith(">>><<<"):
             line = content[i].strip()
             
-            # Look for the start of a pseudogene alignment block
-            if line.startswith(f">>{pseudogene_id}") or line.startswith(">--"):
+            # Look for the start of an alignment block
+            if line.startswith(f">>{exon_id}") or line.startswith(">--"):
                 # Initialize alignment data structure
                 alignment = {
-                    "name": pseudogene_id,
-                    "strand": "",
+                    "name": exon_id,
+                    "strand": exon_info['strand'],  # Default to exon strand
                     "score": 0,
                     "evalue": 0,
                     "identity": 0,
@@ -264,10 +231,10 @@ def _parse_tfasty_to_gff(tfasty_output, pseudogene_info, logger):
                 
                 # Parse alignment details
                 i += 1
-                while not content[i].startswith(f">>{pseudogene_id}") and not content[i].startswith(">--"):
+                while i < len(content) and not content[i].startswith(f">>{exon_id}") and not content[i].startswith(">--"):
                     line = content[i].strip()
                     
-                    # Strand information
+                    # Strand information (override if specified)
                     if line.startswith("; tfy_frame:"):
                         frame = line.split(":", 1)[1].strip()
                         alignment["strand"] = "+" if frame == "f" else "-"
@@ -293,7 +260,7 @@ def _parse_tfasty_to_gff(tfasty_output, pseudogene_info, logger):
                     elif line.startswith(f">{protein_id}"):
                         # Skip to the protein coordinates
                         i += 1
-                        while content[i].startswith(";"):
+                        while i < len(content) and content[i].startswith(";"):
                             line = content[i].strip()
                             if line.startswith("; al_start:"):
                                 alignment["protein_range"]["start"] = int(line.split(":", 1)[1].strip())
@@ -303,16 +270,17 @@ def _parse_tfasty_to_gff(tfasty_output, pseudogene_info, logger):
                         
                         # Collect the protein sequence (may span multiple lines)
                         protein_seq = ""
-                        while not content[i].startswith(">"):
+                        while i < len(content) and not content[i].startswith(">"):
                             protein_seq += content[i].strip()
                             i += 1
                         alignment["protein_seq"] = protein_seq
                         
                         # Get to the dna section (skip > line)
-                        i += 1
+                        if i < len(content):
+                            i += 1
 
                         # Get dna coordinates
-                        while content[i].startswith(";"):
+                        while i < len(content) and content[i].startswith(";"):
                             line = content[i].strip()
                             if line.startswith("; al_start:"):
                                 alignment["dna_range"]["start"] = int(line.split(":", 1)[1].strip())
@@ -322,16 +290,16 @@ def _parse_tfasty_to_gff(tfasty_output, pseudogene_info, logger):
                         
                         # Collect the DNA sequence (may span multiple lines)
                         dna_seq = ""
-                        while not content[i].startswith(";"):
+                        while i < len(content) and not content[i].startswith(";") and not content[i].startswith(">"):
                             dna_seq += content[i].strip()
                             i += 1
                         alignment["dna_seq"] = dna_seq
 
                         # Skip to the next alignment block
-                        while not content[i].startswith(">"):
+                        while i < len(content) and not content[i].startswith(">"):
                             i += 1
                         
-                        if content[i].startswith(">>>"):
+                        if i >= len(content) or content[i].startswith(">>>"):
                             break  # End of the file
                     
                     else:
@@ -360,119 +328,134 @@ def _parse_tfasty_to_gff(tfasty_output, pseudogene_info, logger):
                 i += 1
         
         # Sort alignments by score (higher scores first)
-        alignments.sort(key=lambda x: x["score"], reverse=True)
+        if alignments:
+            alignments.sort(key=lambda x: x["score"], reverse=True)
 
-        # Filter alignments by strand - keep only those matching the highest-scoring alignment's strand
-        strand = alignments[0]["strand"]  # Get strand of highest-scoring alignment
-        alignments = [a for a in alignments if a["strand"] == strand]
-        
-        # Filter out overlapping alignments (keep the one with higher score)
-        non_overlapping = []
-        for alignment in alignments:
-            dna_start = min(alignment["dna_range"]["start"], alignment["dna_range"]["end"])
-            dna_end = max(alignment["dna_range"]["start"], alignment["dna_range"]["end"])
-
-            prot_start = min(alignment["protein_range"]["start"], alignment["protein_range"]["end"])
-            prot_end = max(alignment["protein_range"]["start"], alignment["protein_range"]["end"])
+            # Filter alignments by strand - keep only those matching the original strand
+            alignments = [a for a in alignments if a["strand"] == exon_info['strand']]
             
-            # Check for overlap with existing alignments
-            overlap = False
-            for existing in non_overlapping:
-                existing_dna_start = min(existing["dna_range"]["start"], existing["dna_range"]["end"])
-                existing_dna_end = max(existing["dna_range"]["start"], existing["dna_range"]["end"])
-
-                existing_prot_start = min(existing["protein_range"]["start"], existing["protein_range"]["end"])
-                existing_prot_end = max(existing["protein_range"]["start"], existing["protein_range"]["end"])
-                
-                # Check for overlap in either DNA or protein ranges
-                if (dna_start <= existing_dna_end and dna_end >= existing_dna_start
-                    or prot_start <= existing_prot_end and prot_end >= existing_prot_start):
-                    overlap = True
-                    break
-            
-            if not overlap:
-                non_overlapping.append(alignment)
+            # Return only the best alignment
+            return alignments[0]
         
-        # Re-sort non-overlapping alignments by position
-        non_overlapping.sort(key=lambda x: min(x["dna_range"].get("start", 0), x["dna_range"].get("end", 0)))
-        
-        # If no valid alignments remain, return empty results
-        if not non_overlapping:
-            return gff_lines
-        
-        # Calculate gene boundaries and total statistics
-        gene_start = float('inf')
-        gene_end = 0
-        total_score = 0
-        min_evalue = float('inf')
-        total_identity = 0
-        total_overlap = 0
-        total_frameshifts = 0 
-        total_insertions = 0
-        total_deletions = 0
-        total_stop_codons = 0
-        
-        for alignment in non_overlapping:
-            dna_start = min(alignment["dna_range"]["start"], alignment["dna_range"]["end"])
-            dna_end = max(alignment["dna_range"]["start"], alignment["dna_range"]["end"])
-            
-            gene_start = min(gene_start, dna_start)
-            gene_end = max(gene_end, dna_end)
-            
-            total_score += alignment["score"]
-            min_evalue = min(min_evalue, alignment["evalue"])
-            total_identity += alignment["identity"] * alignment["overlap"]  # Weight by overlap
-            total_overlap += alignment["overlap"]
-            total_frameshifts += alignment["frameshifts"] 
-            total_insertions += alignment["insertions"]
-            total_deletions += alignment["deletions"] 
-            total_stop_codons += alignment["stop_codons"]
-        
-        # Calculate average identity across all blocks
-        avg_identity = total_identity / total_overlap if total_overlap > 0 else 0
-        
-        # Calculate coverage based on protein length
-        protein_length = len(pseudogene_info['protein_seq'])
-        coverage = (total_overlap / protein_length) if protein_length > 0 else 0
-        
-        # Generate GFF for the gene and its exons
-        chrom = pseudogene_info['chrom']
-        local_offset = pseudogene_info['start']
-        
-        # Calculate genome coordinates
-        pseudogene_start = local_offset + gene_start
-        pseudogene_end = local_offset + gene_end
-
-        gff_lines.append(
-            f"{chrom}\tpseudoscope\tpseudogene\t{pseudogene_start}\t{pseudogene_end}\t{total_score}\t{strand}\t.\t"
-            f"ID={pseudogene_id};Parent={protein_id};evalue={min_evalue};"
-            f"identity={avg_identity:.2f};coverage={coverage:.2f};"
-            f"frameshifts={total_frameshifts};insertions={total_insertions};"
-            f"deletions={total_deletions};stop_codons={total_stop_codons}"
-        )
-        
-        # Create exon features for each alignment block
-        for i, alignment in enumerate(non_overlapping):
-            dna_start = min(alignment["dna_range"]["start"], alignment["dna_range"]["end"])
-            dna_end = max(alignment["dna_range"]["start"], alignment["dna_range"]["end"])
-            
-            exon_start = local_offset + dna_start
-            exon_end = local_offset + dna_end
-            
-            prot_start = alignment["protein_range"].get("start", 0)
-            prot_end = alignment["protein_range"].get("end", 0)
-            
-            gff_lines.append(
-                f"{chrom}\tpseudoscope\texon\t{exon_start}\t{exon_end}\t{alignment['score']}\t{strand}\t.\t"
-                f"ID={pseudogene_id}_exon{i+1};Parent={pseudogene_id};"
-                f"protein_range={prot_start}-{prot_end};identity={alignment['identity']:.2f};"
-                f"frameshifts={alignment['frameshifts']};insertions={alignment['insertions']};"
-                f"deletions={alignment['deletions']};stop_codons={alignment['stop_codons']}"
-            )
-    
     except Exception as e:
-        logger.error(f"Error parsing tfasty output for {pseudogene_info['id']}: {e}")
+        logger.error(f"Error parsing tfasty output for {exon_info['id']}: {e}")
         import traceback
         logger.error(traceback.format_exc())
     
-    return gff_lines
+    return []
+
+def _merge_exons(pseudogene_id, exon_results, chrom, protein, strand, protein_seqs):
+    """Merge aligned exons from the same cluster into a pseudogene"""
+    if not exon_results:
+        return None
+    
+    # Initialize pseudogene data
+    merged_pseudogene = {
+        'id': pseudogene_id,
+        'chrom': chrom,
+        'protein': protein,
+        'strand': strand,
+        'start': float('inf'),
+        'end': 0,
+        'score': 0,
+        'evalue': float('inf'),
+        'identity': 0,
+        'coverage': 0,
+        'frameshifts': 0,
+        'insertions': 0,
+        'deletions': 0,
+        'stop_codons': 0,
+        'exons': [],
+        'gff_lines': []
+    }
+    
+    # Track protein identity and overlap
+    total_identity = 0
+    pg_prot_start = float('inf')
+    pg_prot_end = 0
+    
+    # Process each exon
+    for exon_idx, exon in enumerate(exon_results):
+        offset = exon["offset"]  # Local to genomic coordinate conversion
+        alignment = exon["alignment"]
+            
+        # Get DNA coordinates
+        dna_start = min(alignment["dna_range"].get("start", 0), alignment["dna_range"].get("end", 0))
+        dna_end = max(alignment["dna_range"].get("start", 0), alignment["dna_range"].get("end", 0))
+        
+        # Convert to genomic coordinates
+        genomic_start = offset + dna_start
+        genomic_end = offset + dna_end
+        
+        # Update pseudogene bounds
+        merged_pseudogene['start'] = min(merged_pseudogene['start'], genomic_start)
+        merged_pseudogene['end'] = max(merged_pseudogene['end'], genomic_end)
+        
+        # Update statistics
+        merged_pseudogene['score'] += alignment['score']
+        merged_pseudogene['evalue'] = min(merged_pseudogene['evalue'], alignment['evalue'])
+        merged_pseudogene['frameshifts'] += alignment['frameshifts']
+        merged_pseudogene['insertions'] += alignment['insertions']
+        merged_pseudogene['deletions'] += alignment['deletions']
+        merged_pseudogene['stop_codons'] += alignment['stop_codons']
+        
+        # Track protein coverage
+        exon_prot_start = min(alignment["protein_range"].get("start", 0), alignment["protein_range"].get("end", 0))
+        exon_prot_end = max(alignment["protein_range"].get("start", 0), alignment["protein_range"].get("end", 0))
+        pg_prot_start = min(pg_prot_start, exon_prot_start)
+        pg_prot_end = max(pg_prot_end, exon_prot_end)
+
+        # Update for average identity and coverage calculation
+        total_identity += alignment["identity"]
+        
+        # Add this exon to the merged pseudogene
+        merged_pseudogene['exons'].append({
+            'id': f"{pseudogene_id}_exon{len(merged_pseudogene['exons'])+1}",
+            'start': genomic_start,
+            'end': genomic_end,
+            'score': alignment['score'],
+            'strand': strand,
+            'protein_range': f"{exon_prot_start}-{exon_prot_end}",
+            'identity': alignment['identity'],
+            'frameshifts': alignment['frameshifts'],
+            'insertions': alignment['insertions'],
+            'deletions': alignment['deletions'],
+            'stop_codons': alignment['stop_codons']
+        })
+    
+    overlap = pg_prot_end - pg_prot_start
+
+    # Calculate average identity 
+    merged_pseudogene['identity'] = total_identity / len(exon_results)
+    
+    # Calculate avarage coverage
+    protein_length = len(protein_seqs[protein])
+    merged_pseudogene['coverage'] = (overlap / protein_length)
+    
+    # Sort exons by position
+    merged_pseudogene['exons'].sort(key=lambda x: x['start'])
+
+    # Generate GFF lines for the pseudogene and its exons
+    merged_pseudogene['gff_lines'] = []
+    
+    # Pseudogene line
+    merged_pseudogene['gff_lines'].append(
+        f"{chrom}\tpseudoscope\tpseudogene\t{merged_pseudogene['start']}\t{merged_pseudogene['end']}\t"
+        f"{merged_pseudogene['score']}\t{strand}\t.\t"
+        f"ID={pseudogene_id};Parent={protein};evalue={merged_pseudogene['evalue']};"
+        f"identity={merged_pseudogene['identity']:.2f};coverage={merged_pseudogene['coverage']:.2f};"
+        f"frameshifts={merged_pseudogene['frameshifts']};insertions={merged_pseudogene['insertions']};"
+        f"deletions={merged_pseudogene['deletions']};stop_codons={merged_pseudogene['stop_codons']}"
+    )
+    
+    # Exon lines
+    for exon in merged_pseudogene['exons']:
+        merged_pseudogene['gff_lines'].append(
+            f"{chrom}\tpseudoscope\texon\t{exon['start']}\t{exon['end']}\t{exon['score']}\t{strand}\t.\t"
+            f"ID={exon['id']};Parent={pseudogene_id};"
+            f"protein_range={exon['protein_range']};identity={exon['identity']:.2f};"
+            f"frameshifts={exon['frameshifts']};insertions={exon['insertions']};"
+            f"deletions={exon['deletions']};stop_codons={exon['stop_codons']}"
+        )
+    
+    return merged_pseudogene

@@ -10,10 +10,8 @@ from core.extract_proteins import extract_proteins
 from core.mask_genes import mask_genes
 from core.run_tblastn import run_tblastn
 from core.filter_hits import filter_hits
-from core.merge_hits import merge_hits
-# from core.merge_hits_v2 import merge_hits
-# from core.merge_hits_v3 import merge_hits
-from core.run_exonerate import run_exonerate
+from core.create_exons import create_exons
+from core.create_pseudogenes import create_pseudogenes
 from core.run_tfasty import run_tfasty
 
 import os
@@ -52,7 +50,6 @@ class Pseudoscope:
         self.extract_proteins_dir = os.path.join(self.temp_dir, "extract_proteins_out")
         self.blast_dir = os.path.join(self.temp_dir, "blast_out")
         self.filter_and_merge_dir = os.path.join(self.temp_dir, "filtered_and_merged_hits")
-        # self.exonerate_dir = os.path.join(self.temp_dir, "exonerate_out")
         self.tfasty_dir = os.path.join(self.temp_dir, "tfasty_out")
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs(self.temp_dir, exist_ok=True)
@@ -60,7 +57,6 @@ class Pseudoscope:
         os.makedirs(self.extract_proteins_dir, exist_ok=True)
         os.makedirs(self.blast_dir, exist_ok=True)
         os.makedirs(self.filter_and_merge_dir, exist_ok=True)
-        # os.makedirs(self.exonerate_dir, exist_ok=True)
         os.makedirs(self.tfasty_dir, exist_ok=True)
         
         # Set up logging
@@ -101,17 +97,13 @@ class Pseudoscope:
 
         # Step 4: Filter and merge hits
         self.logger.info("Filtering and merging BLAST hits")
-        hits = filter_hits(blast_out, self.filter_and_merge_dir, self.logger)
-        pseudogenes = merge_hits(hits, self.protein_file, self.max_intron_length, self.filter_and_merge_dir, self.logger)
-        # pseudogenes = os.path.join(self.filter_and_merge_dir, "merged_hits.tsv")
-
-        # # Step 5: Precise re-alignment with exonerate
-        # self.logger.info("Running precise re-alignment with exonerate")
-        # run_exonerate(pseudogenes, self.protein_file, genes_masked__genome, self.exonerate_dir, self.logger)
+        filtered_hits_file = filter_hits(blast_out, self.filter_and_merge_dir, self.logger)
+        exons_file = create_exons(filtered_hits_file, self.filter_and_merge_dir, self.logger)
+        exon_clusters = create_pseudogenes(exons_file, self.max_intron_length, self.filter_and_merge_dir, self.logger)
 
         # Step 5: Precise re-alignment with tfasty
         self.logger.info("Running precise re-alignment with tfasty")
-        run_tfasty(pseudogenes, self.protein_file, genes_masked__genome, self.tfasty_dir, self.logger)
+        run_tfasty(exon_clusters, self.protein_file, genes_masked__genome, self.tfasty_dir, self.logger)
 
         # # Step 6: Classify pseudogenes
         # self.logger.info("Classifying pseudogenes")
