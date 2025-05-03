@@ -100,7 +100,7 @@ def run_tblastn(genes_masked__genome, protein_file, evalue, threads, max_intron_
         
         try:
             subprocess.run(tblastn_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            logger.info(f"tblastn completed successfully, results saved to {blast_out}")
+            logger.info(f"tblastn completed successfully")
             _format_blast_out(blast_out, logger)
             return blast_out
         except subprocess.CalledProcessError as e:

@@ -33,7 +33,7 @@ def mask_genes(gff_file, genome_file, out_dir, logger):
         
         try:
             subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            logger.info(f"Masked genome saved to {genes_masked__genome}")
+            logger.info(f"Functional genes masked successfully")
             return genes_masked__genome
         except subprocess.CalledProcessError as e:
             logger.error(f"Error masking genome: {e}")

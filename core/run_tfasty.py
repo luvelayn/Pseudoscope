@@ -146,7 +146,8 @@ def run_tfasty(exon_clusters, protein_file, genome_file, out_dir, logger):
         # Now merge exon alignments into a pseudogene
         merged_pseudogene = _merge_exons(pseudogene_id, exon_results, chrom, protein, strand, protein_seqs)
         
-        if merged_pseudogene:
+        # Filter pseudogenes based on evalue and coverage
+        if merged_pseudogene['evalue'] <= 1e-5 and merged_pseudogene['coverage'] >= 0.05:
             # Add to our results
             pseudogene_results.append({
                 'id': pseudogene_id,

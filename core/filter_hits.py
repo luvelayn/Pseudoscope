@@ -52,7 +52,7 @@ def filter_hits(tblastn_file, out_dir, logger):
                             'evalue': evalue
                         })
         
-            logger.info(f"Filtered {len(filtered_hits)} BLAST hits")
+            logger.info(f"BLAST hits filtered successfully. {len(filtered_hits)} hits retained.")
             
             # Save filtered hits to file
             filtered_hits_file = os.path.join(out_dir, "filtered_hits.tsv")

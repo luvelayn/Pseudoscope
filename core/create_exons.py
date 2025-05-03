@@ -102,7 +102,7 @@ def create_exons(input_tsv, out_dir, logger):
                     'evalue': best_evalue
                 })
 
-        logger.info(f"Created {len(exons)} exons after merging same protein hits")
+        logger.info(f"Hits merged into exons successfully. {len(exons)} exons created.")
 
         # Save exons to file
         exons_file = os.path.join(out_dir, "exons.tsv")

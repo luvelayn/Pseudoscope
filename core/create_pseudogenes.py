@@ -1,5 +1,4 @@
 import csv
-import os
 
 def _resolve_overlapping(pseudogenes_list):
     """Resolve overlapping pseudogenes from different protein or strand"""
@@ -46,16 +45,7 @@ def _resolve_overlapping(pseudogenes_list):
     
     return non_overlapping
 
-def _filter_by_evalue(pseudogenes_list, max_evalue):
-    filtered_pseudogenes = []
-    
-    for pg in pseudogenes_list:
-        if pg['evalue'] <= max_evalue:
-            filtered_pseudogenes.append(pg)
-    
-    return filtered_pseudogenes
-
-def create_pseudogenes(input_tsv, max_intron_length, out_dir, logger):
+def create_pseudogenes(input_tsv, max_intron_length, logger):
     """Create pseudogene candidates from exons
     
     Returns:
@@ -80,7 +70,7 @@ def create_pseudogenes(input_tsv, max_intron_length, out_dir, logger):
                 }
                 exons.append(exon)
     except Exception as e:
-        logger.error(f"Error reading input file {input_tsv}: {e}")
+        logger.error(f"Error reading input file: {e}")
         return []
     
     # Merge close exons into one pseudogene    
@@ -164,18 +154,11 @@ def create_pseudogenes(input_tsv, max_intron_length, out_dir, logger):
               'exons': current_group.copy()  # Include all exon dictionaries
             })
 
-    logger.info(f"Created {len(pseudogenes)} pseudogene candidates after merging exons")
+    logger.info(f"Exons merged into pseudogene clusters successfully. {len(pseudogenes)} clusters created.")
 
     # Filtering out overlapping pseudogenes
     non_overlapping_pgs = _resolve_overlapping(pseudogenes)
-    logger.info(f"Remained {len(non_overlapping_pgs)} pseudogenes after filtering out overlapping candidates")
-    
-    # max_evalue = 1e-5
-    # filtered_by_evalue_pgs = _filter_by_evalue(non_overlapping_pgs, max_evalue)
-
-    # exon_clusters = []
-    # for pg in filtered_by_evalue_pgs: 
-    #     exon_clusters.append(pg['exons'])
+    logger.info(f"Filtered overlapping clusters. {len(non_overlapping_pgs)} clusters retained.")
     
     exon_clusters = []
     for pg in non_overlapping_pgs: 

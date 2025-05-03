@@ -4,8 +4,8 @@ Pseudoscope - A Pseudogene Identification Pipeline
 A command-line tool for automated identification and annotation of pseudogenes
 in genomic sequences, based on homology search and structural analysis.
 """
-from core._setup_logging import _setup_logging
-from core._check_dependencies import _check_dependencies
+from utils._setup_logging import _setup_logging
+from utils._check_dependencies import _check_dependencies
 from core.extract_proteins import extract_proteins
 from core.mask_genes import mask_genes
 from core.run_tblastn import run_tblastn
@@ -99,7 +99,7 @@ class Pseudoscope:
         self.logger.info("Filtering and merging BLAST hits")
         filtered_hits_file = filter_hits(blast_out, self.filter_and_merge_dir, self.logger)
         exons_file = create_exons(filtered_hits_file, self.filter_and_merge_dir, self.logger)
-        exon_clusters = create_pseudogenes(exons_file, self.max_intron_length, self.filter_and_merge_dir, self.logger)
+        exon_clusters = create_pseudogenes(exons_file, self.max_intron_length, self.logger)
 
         # Step 5: Precise re-alignment with tfasty
         self.logger.info("Running precise re-alignment with tfasty")
