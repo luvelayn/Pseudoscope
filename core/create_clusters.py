@@ -1,5 +1,6 @@
 from collections import defaultdict
 import csv
+from Bio import SeqIO
 
 def _resolve_overlapping(pseudogenes_list):
     """Resolve overlapping pseudogenes from different protein or strand"""
@@ -19,8 +20,11 @@ def _resolve_overlapping(pseudogenes_list):
         current['chrom'] == non_overlapping[-1]['chrom'] and 
         current['start'] <= non_overlapping[-1]['end']):
         
-            if current['length'] > non_overlapping[-1]['length']:
+            if current['coverage'] > non_overlapping[-1]['coverage']:
                 non_overlapping.pop()
+            elif current['coverage'] == non_overlapping[-1]['coverage']:
+                if current['score'] > non_overlapping[-1]['score']:
+                    non_overlapping.pop()
             else:
                 i += 1
                 continue
@@ -37,8 +41,8 @@ def _resolve_overlapping(pseudogenes_list):
             non_overlapping.append(current)
             i += 1
         else:
-            # Select best pseudogene based on length
-            best = max(overlapping, key=lambda x: x['length'])
+            # Select best pseudogene based on coverage and score
+            best = max(overlapping, key=lambda x: (x['coverage'], x['score']))
             non_overlapping.append(best)
         
             # Skip all overlapping pseudogenes
@@ -46,13 +50,18 @@ def _resolve_overlapping(pseudogenes_list):
     
     return non_overlapping
 
-def create_clusters(input_tsv, max_intron_length, logger):
+def create_clusters(input_tsv, protein_file, max_intron_length, logger):
     """Create pseudogene candidates from exons
     
     Returns:
         list: A list of lists of dictionaries, where each inner list represents a pseudogene
               and contains dictionaries with exon information (protein, chrom, start, end, strand, evalue)
     """
+    # Load protein lengths
+    protein_lengths = {}
+    for record in SeqIO.parse(protein_file, "fasta"):
+        protein_lengths[record.id] = len(record.seq)
+
     # Read exons from TSV file
     exons = []
     
@@ -66,6 +75,8 @@ def create_clusters(input_tsv, max_intron_length, logger):
                     'chrom': row['chrom'],
                     'start': int(row['start']),
                     'end': int(row['end']),
+                    'qstart': int(row['qstart']),
+                    'qend': int(row['qend']),
                     'strand': row['strand'],
                     'evalue': float(row['evalue']),
                     'score': float(row['score'])
@@ -100,9 +111,10 @@ def create_clusters(input_tsv, max_intron_length, logger):
                 'start': exon['start'],
                 'end': exon['end'],
                 'length': exon['end'] - exon['start'] + 1,
+                'coverage': (exon['qend'] - exon['qstart'] + 1) / protein_lengths[protein],
                 'strand': strand,
                 'evalue': exon['evalue'],
-                'score': exon['score'], 
+                'score': exon['score'],   
                 'exons': [exon]  # Include the entire exon dictionary
             })
             continue
@@ -114,6 +126,8 @@ def create_clusters(input_tsv, max_intron_length, logger):
             current_cluster = [group_exons[i]]
             start = group_exons[i]['start']
             end = group_exons[i]['end']
+            qstart = group_exons[i]['qstart']
+            qend = group_exons[i]['qend']
             
             # Look for exons that can be added to this cluster
             j = i + 1
@@ -127,6 +141,8 @@ def create_clusters(input_tsv, max_intron_length, logger):
                     
                     # Update cluster end boundary
                     end = max(end, next_exon['end'])
+                    qstart = min(qstart, next_exon['qstart'])
+                    qend = max(qend, next_exon['qend'])
                     j += 1
                 else:
                     # Next exon is too far away, stop adding to current cluster
@@ -142,6 +158,7 @@ def create_clusters(input_tsv, max_intron_length, logger):
                 'start': start,
                 'end': end,
                 'length': end - start + 1,
+                'coverage': (qend - qstart + 1) / protein_lengths[protein],
                 'strand': strand,
                 'evalue': best_evalue,
                 'score': best_score, 

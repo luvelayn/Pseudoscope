@@ -176,7 +176,7 @@ def run_tfasty(exon_clusters, protein_file, genome_file, out_dir, logger):
             for line in pg['gff_lines']:
                 f.write(line + '\n')
     
-    logger.info(f"Completed tfasty re-alignment. Created {len(pseudogene_results)} pseudogenes.")
+    logger.info(f"Completed tfasty re-alignment, created {len(pseudogene_results)} pseudogenes")
     
     # Write summary file
     summary_file = os.path.join(out_dir, "pseudogene_summary.tsv")

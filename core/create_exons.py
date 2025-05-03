@@ -68,6 +68,8 @@ def create_exons(input_tsv, out_dir, logger):
                 'chrom': chrom,
                 'start': hit['sstart'],
                 'end': hit['send'],
+                'qstart': hit['qstart'],
+                'qend': hit['qend'],
                 'strand': hit['strand'],
                 'evalue': hit['evalue'],
                 'score': hit['length'] * hit['pident'],  # Add score metric for better ranking
@@ -83,6 +85,8 @@ def create_exons(input_tsv, out_dir, logger):
             best_score = group_hits[i]['length'] * group_hits[i]['pident']
             start = group_hits[i]['sstart']
             end = group_hits[i]['send']
+            qstart = group_hits[i]['qstart']
+            qend = group_hits[i]['qend']
             
             # Look for hits that can be merged into this exon
             j = i + 1
@@ -104,6 +108,8 @@ def create_exons(input_tsv, out_dir, logger):
                     
                     # Expand exon boundaries
                     end = max(end, next_hit['send'])
+                    qstart = min(qstart, next_hit['qstart'])
+                    qend = max(qend, next_hit['qend'])
                     j += 1
                 else:
                     # Next hit is too far away, stop merging
@@ -115,6 +121,8 @@ def create_exons(input_tsv, out_dir, logger):
                 'chrom': chrom,
                 'start': start,
                 'end': end,
+                'qstart': qstart,
+                'qend': qend,
                 'strand': strand,
                 'evalue': best_evalue,
                 'score': best_score
@@ -131,10 +139,11 @@ def create_exons(input_tsv, out_dir, logger):
         
         with open(exons_file, 'w') as f:
             # Add more fields to the output
-            f.write("protein\tchrom\tstart\tend\tstrand\tevalue\tscore\n")
+            f.write("protein\tchrom\tstart\tend\tqstart\tqend\tstrand\tevalue\tscore\n")
             for exon in exons:
                 f.write(f"{exon['protein']}\t{exon['chrom']}\t{exon['start']}\t{exon['end']}\t"
-                        f"{exon['strand']}\t{exon['evalue']}\t{exon['score']:.1f}\n")
+                        f"{exon['qstart']}\t{exon['qend']}\t{exon['strand']}\t"
+                        f"{exon['evalue']}\t{exon['score']}\n")
         
         return exons_file
     except Exception as e:
