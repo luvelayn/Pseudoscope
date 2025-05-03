@@ -1,3 +1,4 @@
+from collections import defaultdict
 import csv
 
 def _resolve_overlapping(pseudogenes_list):
@@ -66,20 +67,18 @@ def create_clusters(input_tsv, max_intron_length, logger):
                     'start': int(row['start']),
                     'end': int(row['end']),
                     'strand': row['strand'],
-                    'evalue': float(row['evalue'])
+                    'evalue': float(row['evalue']),
+                    'score': float(row['score'])
                 }
                 exons.append(exon)
     except Exception as e:
         logger.error(f"Error reading input file: {e}")
         return []
     
-    # Merge close exons into one pseudogene    
     # Group exons by protein, chromosome and strand direction
-    grouped_exons = {}
+    grouped_exons = defaultdict(list)
     for exon in exons:
         key = (exon['protein'], exon['chrom'], exon['strand'])  # (protein, chromosome, strand)
-        if key not in grouped_exons:
-            grouped_exons[key] = []
         grouped_exons[key].append(exon)
     
     # Sort exons within each group by position
@@ -92,7 +91,7 @@ def create_clusters(input_tsv, max_intron_length, logger):
     for key, group_exons in grouped_exons.items():
         protein, chrom, strand = key
         
-        # Processing if only one exon
+        # Special case: if only one exon
         if len(group_exons) == 1:
             exon = group_exons[0]
             pseudogenes.append({
@@ -103,62 +102,60 @@ def create_clusters(input_tsv, max_intron_length, logger):
                 'length': exon['end'] - exon['start'] + 1,
                 'strand': strand,
                 'evalue': exon['evalue'],
+                'score': exon['score'], 
                 'exons': [exon]  # Include the entire exon dictionary
             })
             continue
             
-        # Check for close exons
-        current_group = [group_exons[0]]
-        for i in range(1, len(group_exons)):
-            current_exon = group_exons[i]
-            last_exon = current_group[-1]
+        # Process multiple exons
+        i = 0
+        while i < len(group_exons):
+            # Start a new potential cluster
+            current_cluster = [group_exons[i]]
+            start = group_exons[i]['start']
+            end = group_exons[i]['end']
             
-            # Check if exons are the part of the same pseudogene
-            if (current_exon['start'] <= last_exon['end'] + max_intron_length):
-                current_group.append(current_exon)
-            else:
-                # Create pseudogene from the current group
-                if current_group:
-                    best_evalue = min([h['evalue'] for h in current_group])
-                    start = min([h['start'] for h in current_group])
-                    end = max([h['end'] for h in current_group])
-                    
-                    pseudogenes.append({
-                      'protein': protein,
-                      'chrom': chrom,
-                      'start': start,
-                      'end': end,
-                      'length': end - start + 1,
-                      'strand': strand,
-                      'evalue': best_evalue,
-                      'exons': current_group.copy()  # Include all exon dictionaries
-                    })
+            # Look for exons that can be added to this cluster
+            j = i + 1
+            while j < len(group_exons):
+                next_exon = group_exons[j]
                 
-                # Start a new group with the current hit
-                current_group = [current_exon]
-        
-        # Don't forget the last group
-        if current_group:
-            best_evalue = min([h['evalue'] for h in current_group])
-            start = min([h['start'] for h in current_group])
-            end = max([h['end'] for h in current_group])
+                # Check if exon belongs to the same pseudogene (within max_intron_length)
+                if next_exon['start'] <= end + max_intron_length:
+                    # Add to current cluster
+                    current_cluster.append(next_exon)
                     
+                    # Update cluster end boundary
+                    end = max(end, next_exon['end'])
+                    j += 1
+                else:
+                    # Next exon is too far away, stop adding to current cluster
+                    break
+            
+            # Create pseudogene from the current group
+            best_evalue = min([e['evalue'] for e in current_cluster])
+            best_score = max([e['score'] for e in current_cluster])
+            
             pseudogenes.append({
-              'protein': protein,
-              'chrom': chrom,
-              'start': start,
-              'end': end,
-              'length': end - start + 1,
-              'strand': strand,
-              'evalue': best_evalue,
-              'exons': current_group.copy()  # Include all exon dictionaries
+                'protein': protein,
+                'chrom': chrom,
+                'start': start,
+                'end': end,
+                'length': end - start + 1,
+                'strand': strand,
+                'evalue': best_evalue,
+                'score': best_score, 
+                'exons': current_cluster.copy()  # Include all exon dictionaries
             })
+            
+            # Move to the next unprocessed exon
+            i = j
 
-    logger.info(f"Exons merged into pseudogene clusters successfully. {len(pseudogenes)} clusters created.")
+    logger.info(f"Exons merged into clusters, {len(pseudogenes)} clusters created")
 
     # Filtering out overlapping pseudogenes
     non_overlapping_pgs = _resolve_overlapping(pseudogenes)
-    logger.info(f"Filtered overlapping clusters. {len(non_overlapping_pgs)} clusters retained.")
+    logger.info(f"Overlapping clusters filtered, {len(non_overlapping_pgs)} clusters retained")
     
     exon_clusters = []
     for pg in non_overlapping_pgs: 

@@ -26,30 +26,22 @@ def create_exons(input_tsv, out_dir, logger):
         with open(input_tsv, 'r') as f:
             reader = csv.DictReader(f, delimiter='\t')
             for row in reader:
-                try:
-                    # Convert numeric fields with proper error handling
-                    hit = {
-                        'qseqid': row['qseqid'],
-                        'sseqid': row['sseqid'],
-                        'pident': float(row['pident']),
-                        'length': int(row['length']),
-                        'qstart': int(row['qstart']),
-                        'qend': int(row['qend']),
-                        'sstart': int(row['sstart']),
-                        'send': int(row['send']),
-                        'strand': row['strand'],
-                        'evalue': float(row['evalue'])
-                    }
-                    hits.append(hit)
-                except (ValueError, KeyError) as e:
-                    logger.warning(f"Skipping malformed row in {input_tsv}: {row}. Error: {e}")
-                    continue
+                # Convert numeric fields with proper error handling
+                hit = {
+                    'qseqid': row['qseqid'],
+                    'sseqid': row['sseqid'],
+                    'pident': float(row['pident']),
+                    'length': int(row['length']),
+                    'qstart': int(row['qstart']),
+                    'qend': int(row['qend']),
+                    'sstart': int(row['sstart']),
+                    'send': int(row['send']),
+                    'strand': row['strand'],
+                    'evalue': float(row['evalue'])
+                }
+                hits.append(hit)
     except Exception as e:
-        logger.error(f"Error reading input file {input_tsv}: {e}")
-        return None
-    
-    if not hits:
-        logger.warning(f"No valid hits found in {input_tsv}")
+        logger.error(f"Error reading input file: {e}")
         return None
         
     # Group hits by protein, chromosome and strand direction
@@ -131,7 +123,7 @@ def create_exons(input_tsv, out_dir, logger):
             # Move to the next unprocessed hit
             i = j
 
-    logger.info(f"Hits merged into exons successfully. {len(exons)} exons created")
+    logger.info(f"Hits merged into exons, {len(exons)} exons created")
 
     # Save exons to file
     try:
