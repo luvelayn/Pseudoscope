@@ -79,7 +79,6 @@ def create_exons(input_tsv, out_dir, logger):
                 'strand': hit['strand'],
                 'evalue': hit['evalue'],
                 'score': hit['length'] * hit['pident'],  # Add score metric for better ranking
-                'hits_merged': 1  # Track number of hits merged into this exon
             })
             continue
             
@@ -126,17 +125,13 @@ def create_exons(input_tsv, out_dir, logger):
                 'end': end,
                 'strand': strand,
                 'evalue': best_evalue,
-                'score': best_score,
-                'hits_merged': len(current_merge)
+                'score': best_score
             })
             
             # Move to the next unprocessed hit
             i = j
-    
-    # Sort exons by score (highest to lowest) for better prioritization
-    exons.sort(key=lambda x: x['score'], reverse=True)
-    
-    logger.info(f"Hits merged into exons successfully. {len(exons)} exons created from {len(hits)} hits.")
+
+    logger.info(f"Hits merged into exons successfully. {len(exons)} exons created")
 
     # Save exons to file
     try:
@@ -144,12 +139,10 @@ def create_exons(input_tsv, out_dir, logger):
         
         with open(exons_file, 'w') as f:
             # Add more fields to the output
-            f.write("protein\tchrom\tstart\tend\tstrand\tevalue\tscore\thits_merged\tlength\n")
+            f.write("protein\tchrom\tstart\tend\tstrand\tevalue\tscore\n")
             for exon in exons:
-                exon_length = exon['end'] - exon['start'] + 1
                 f.write(f"{exon['protein']}\t{exon['chrom']}\t{exon['start']}\t{exon['end']}\t"
-                        f"{exon['strand']}\t{exon['evalue']}\t{exon['score']:.1f}\t"
-                        f"{exon['hits_merged']}\t{exon_length}\n")
+                        f"{exon['strand']}\t{exon['evalue']}\t{exon['score']:.1f}\n")
         
         return exons_file
     except Exception as e:

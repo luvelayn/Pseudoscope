@@ -45,7 +45,7 @@ def _resolve_overlapping(pseudogenes_list):
     
     return non_overlapping
 
-def create_pseudogenes(input_tsv, max_intron_length, logger):
+def create_clusters(input_tsv, max_intron_length, logger):
     """Create pseudogene candidates from exons
     
     Returns:

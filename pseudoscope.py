@@ -11,7 +11,7 @@ from core.mask_genes import mask_genes
 from core.run_tblastn import run_tblastn
 from core.filter_hits import filter_hits
 from core.create_exons import create_exons
-from core.create_pseudogenes import create_pseudogenes
+from core.create_clusters import create_clusters
 from core.run_tfasty import run_tfasty
 
 import os
@@ -99,7 +99,7 @@ class Pseudoscope:
         self.logger.info("Filtering and merging BLAST hits")
         filtered_hits_file = filter_hits(blast_out, self.filter_and_merge_dir, self.logger)
         exons_file = create_exons(filtered_hits_file, self.filter_and_merge_dir, self.logger)
-        exon_clusters = create_pseudogenes(exons_file, self.max_intron_length, self.logger)
+        exon_clusters = create_clusters(exons_file, self.max_intron_length, self.logger)
 
         # Step 5: Precise re-alignment with tfasty
         self.logger.info("Running precise re-alignment with tfasty")
