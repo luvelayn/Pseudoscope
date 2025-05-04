@@ -1,9 +1,8 @@
 import os
 import subprocess
 import tempfile
-from Bio import SeqIO
 
-def run_tfasty(exon_clusters, protein_file, genome_file, out_dir, logger):
+def run_tfasty(exon_clusters, protein_seqs, genome_seqs, evalue, coverage, identity, out_dir, logger):
     """Run precise re-alignment with tfasty for each exon separately, then merge into pseudogenes
     
     Parameters:
@@ -32,16 +31,6 @@ def run_tfasty(exon_clusters, protein_file, genome_file, out_dir, logger):
     if not exon_clusters:
         logger.warning("No pseudogene candidates for re-alignment")
         return
-
-    # Extract protein sequences
-    protein_seqs = {}
-    for record in SeqIO.parse(protein_file, "fasta"):
-        protein_seqs[record.id] = str(record.seq)
-        
-    # Extract genome sequences
-    genome_seqs = {}
-    for record in SeqIO.parse(genome_file, "fasta"):
-        genome_seqs[record.id] = str(record.seq)
     
     # Create directories for output
     tfasty_output_dir = os.path.join(out_dir, "tfasty_alignments")
@@ -146,8 +135,10 @@ def run_tfasty(exon_clusters, protein_file, genome_file, out_dir, logger):
         # Now merge exon alignments into a pseudogene
         merged_pseudogene = _merge_exons(pseudogene_id, exon_results, chrom, protein, strand, protein_seqs)
         
-        # Filter pseudogenes based on evalue and coverage
-        if merged_pseudogene['evalue'] <= 1e-5 and merged_pseudogene['coverage'] >= 0.05:
+        # Filter pseudogenes based on evalue, coverage and identity
+        if (merged_pseudogene['evalue'] <= evalue and 
+            merged_pseudogene['coverage'] >= coverage and
+            merged_pseudogene['identity'] >= identity):
             # Add to our results
             pseudogene_results.append({
                 'id': pseudogene_id,
@@ -156,41 +147,21 @@ def run_tfasty(exon_clusters, protein_file, genome_file, out_dir, logger):
                 'strand': strand,
                 'start': merged_pseudogene['start'],
                 'end': merged_pseudogene['end'],
-                'gff_lines': merged_pseudogene['gff_lines'],
-                'exon_count': len(merged_pseudogene['exons']),
                 'frameshifts': merged_pseudogene['frameshifts'],
                 'insertions': merged_pseudogene['insertions'],
                 'deletions': merged_pseudogene['deletions'],
                 'stop_codons': merged_pseudogene['stop_codons'],
+                'exons': merged_pseudogene['exons'],
+                'exon_count': len(merged_pseudogene['exons']),
                 'score': merged_pseudogene['score'],
                 'evalue': merged_pseudogene['evalue'],
                 'identity': merged_pseudogene['identity'],
                 'coverage': merged_pseudogene['coverage']
             })
     
-    # Write GFF output for all pseudogenes
-    tfasty_out = os.path.join(out_dir, "tfasty_results.gff")
-    with open(tfasty_out, 'w') as f:
-        f.write("##gff-version 3\n")
-        for pg in pseudogene_results:
-            for line in pg['gff_lines']:
-                f.write(line + '\n')
+    logger.info(f"Completed tfasty re-alignment, remained {len(pseudogene_results)} pseudogenes")
     
-    logger.info(f"Completed tfasty re-alignment, created {len(pseudogene_results)} pseudogenes")
-    
-    # Write summary file
-    summary_file = os.path.join(out_dir, "pseudogene_summary.tsv")
-    with open(summary_file, 'w') as f:
-        f.write("pseudogene_id\tchrom\tstart\tend\tstrand\tparent_protein\t"
-                "frameshifts\tinsertions\tdeletions\tstop_codons\t"
-                "exon_count\tcoverage\tidentity\tevalue\n")
-        
-        for pg in pseudogene_results:
-            f.write(f"{pg['id']}\t{pg['chrom']}\t{pg['start']}\t{pg['end']}\t{pg['strand']}\t{pg['protein']}\t"
-                    f"{pg['frameshifts']}\t{pg['insertions']}\t{pg['deletions']}\t{pg['stop_codons']}\t"
-                    f"{pg['exon_count']}\t{pg['coverage']:.2f}\t{pg['identity']:.2f}\t{pg['evalue']}\n")
-    
-    return tfasty_out
+    return pseudogene_results
 
 def _parse_tfasty_output(tfasty_output, exon_info, logger):
     """Parse tfasty output (format 10) and extract alignment information"""
@@ -366,8 +337,7 @@ def _merge_exons(pseudogene_id, exon_results, chrom, protein, strand, protein_se
         'insertions': 0,
         'deletions': 0,
         'stop_codons': 0,
-        'exons': [],
-        'gff_lines': []
+        'exons': []
     }
     
     # Track protein identity and overlap
@@ -435,28 +405,5 @@ def _merge_exons(pseudogene_id, exon_results, chrom, protein, strand, protein_se
     
     # Sort exons by position
     merged_pseudogene['exons'].sort(key=lambda x: x['start'])
-
-    # Generate GFF lines for the pseudogene and its exons
-    merged_pseudogene['gff_lines'] = []
-    
-    # Pseudogene line
-    merged_pseudogene['gff_lines'].append(
-        f"{chrom}\tpseudoscope\tpseudogene\t{merged_pseudogene['start']}\t{merged_pseudogene['end']}\t"
-        f"{merged_pseudogene['score']}\t{strand}\t.\t"
-        f"ID={pseudogene_id};Parent={protein};evalue={merged_pseudogene['evalue']};"
-        f"identity={merged_pseudogene['identity']:.2f};coverage={merged_pseudogene['coverage']:.2f};"
-        f"frameshifts={merged_pseudogene['frameshifts']};insertions={merged_pseudogene['insertions']};"
-        f"deletions={merged_pseudogene['deletions']};stop_codons={merged_pseudogene['stop_codons']}"
-    )
-    
-    # Exon lines
-    for exon in merged_pseudogene['exons']:
-        merged_pseudogene['gff_lines'].append(
-            f"{chrom}\tpseudoscope\texon\t{exon['start']}\t{exon['end']}\t{exon['score']}\t{strand}\t.\t"
-            f"ID={exon['id']};Parent={pseudogene_id};"
-            f"protein_range={exon['protein_range']};identity={exon['identity']:.2f};"
-            f"frameshifts={exon['frameshifts']};insertions={exon['insertions']};"
-            f"deletions={exon['deletions']};stop_codons={exon['stop_codons']}"
-        )
     
     return merged_pseudogene

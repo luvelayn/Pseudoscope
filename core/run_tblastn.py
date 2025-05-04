@@ -28,7 +28,7 @@ def _format_blast_out(blast_out, logger):
             logger.error(e.stderr.decode())
             sys.exit(1)
 
-def run_tblastn(genes_masked__genome, protein_file, evalue, threads, max_intron_length, out_dir, logger):
+def run_tblastn(genes_masked__genome, protein_file, threads, max_intron_length, out_dir, logger):
         """Run tblastn to align proteins to genome"""
         # Create masking information for low-compexity regions soft-masking
         mask_dir = os.path.join(out_dir, "mask_info")
@@ -84,8 +84,7 @@ def run_tblastn(genes_masked__genome, protein_file, evalue, threads, max_intron_
             '-query', protein_file,
             '-db', blast_db,
             '-out', blast_out,
-            '-evalue', str(evalue),
-            # '-outfmt', '6 qseqid sseqid pident length qstart qend sstart send evalue',
+            '-evalue', '0.01',
             '-outfmt', '6',
             '-num_threads', str(threads),
             '-seg', 'yes',

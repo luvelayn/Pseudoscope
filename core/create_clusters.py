@@ -50,17 +50,15 @@ def _resolve_overlapping(pseudogenes_list):
     
     return non_overlapping
 
-def create_clusters(input_tsv, protein_file, max_intron_length, logger):
+def create_clusters(input_tsv, protein_seqs, max_intron_length, logger):
     """Create pseudogene candidates from exons
     
     Returns:
         list: A list of lists of dictionaries, where each inner list represents a pseudogene
               and contains dictionaries with exon information (protein, chrom, start, end, strand, evalue)
     """
-    # Load protein lengths
-    protein_lengths = {}
-    for record in SeqIO.parse(protein_file, "fasta"):
-        protein_lengths[record.id] = len(record.seq)
+    # Get protein lengths
+    protein_lengths = {protein_id: len(sequence) for protein_id, sequence in protein_seqs.items()}
 
     # Read exons from TSV file
     exons = []

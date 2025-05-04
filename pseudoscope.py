@@ -13,45 +13,54 @@ from core.filter_hits import filter_hits
 from core.create_exons import create_exons
 from core.create_clusters import create_clusters
 from core.run_tfasty import run_tfasty
+from core.classify_pseudogenes import classify_pseudogenes
+from core.generate_output import generate_output
 
 import os
 import argparse
+from Bio import SeqIO
 
 __version__ = '0.1.0'
 
 class Pseudoscope:
     """Main class for the pseudogene identification pipeline"""
 
-    def __init__(self, genome_file, gff_file, protein_file=None, output_dir="./pseudoscope_output",
-                 evalue=0.01, max_intron_length=10000, threads=8):
+    def __init__(self, genome_file, gff_file, output_dir, max_intron_length, 
+                evalue, coverage, identity, threads, protein_file=None):
         """
         Initialize the Pseudoscope pipeline
         
         Args:
             genome_file (str): Path to genome FASTA file
             gff_file (str): Path to genome annotation GFF file
+            output_dir (str): Directory for output files
+            max_intron_length (int): Maximum allowed intron length
+            evalue (float): E-value threshold for filtering
+            coverage (float): Coverage threshold for filtering
+            identity (float): Identity threshold for filtering
+            threads (int): Number of threads to use
             protein_file (str, optional): Path to protein FASTA file
-            output_dir (str, optional): Directory for output files
-            evalue (float, optional): E-value threshold for BLAST
-            max_intron_length (int, optional): Maximum allowed intron length
-            threads (int, optional): Number of threads to use
         """
         self.genome_file = os.path.abspath(genome_file)
         self.gff_file = os.path.abspath(gff_file)
         self.protein_file = os.path.abspath(protein_file) if protein_file else None
         self.output_dir = os.path.abspath(output_dir)
-        self.evalue = evalue
         self.max_intron_length = max_intron_length
+        self.evalue = evalue
+        self.coverage = coverage
+        self.identity = identity
         self.threads = threads
         
         # Set up working directory
         self.temp_dir = os.path.join(self.output_dir, "tmp")
+        self.results_dir = os.path.join(self.output_dir, "results")
         self.mask_genes_dir = os.path.join(self.temp_dir, "mask_genes_out")
         self.extract_proteins_dir = os.path.join(self.temp_dir, "extract_proteins_out")
         self.blast_dir = os.path.join(self.temp_dir, "blast_out")
         self.filter_and_merge_dir = os.path.join(self.temp_dir, "filtered_and_merged_hits")
         self.tfasty_dir = os.path.join(self.temp_dir, "tfasty_out")
         os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.results_dir, exist_ok=True)
         os.makedirs(self.temp_dir, exist_ok=True)
         os.makedirs(self.mask_genes_dir, exist_ok=True)
         os.makedirs(self.extract_proteins_dir, exist_ok=True)
@@ -64,11 +73,6 @@ class Pseudoscope:
         
         # Check for required tools
         _check_dependencies(self.logger)
-        
-        # # Final output paths
-        # self.pseudogenes_gff = os.path.join(self.output_dir, "pseudogenes.gff")
-        # self.pseudogenes_tsv = os.path.join(self.output_dir, "pseudogenes.tsv")
-        # self.pseudogene_fasta = os.path.join(self.output_dir, "pseudogenes.fa")
 
     def run(self):
         """Run the complete pseudogene identification pipeline"""
@@ -79,52 +83,64 @@ class Pseudoscope:
 
         # Step 1: Extract proteins if not provided
         if not self.protein_file:
-            self.logger.info("Extracting proteins from genome annotation")
+            self.logger.info("Extracting proteins from genome annotation...")
             self.protein_file = os.path.join(self.extract_proteins_dir, "proteins.fa")
             extract_proteins(self.genome_file, self.gff_file, self.extract_proteins_dir, self.logger)
         else:
             self.logger.info(f"Using provided protein file: {self.protein_file}")
 
+        # Load protein sequences
+        self.protein_seqs = {}
+        for record in SeqIO.parse(self.protein_file, "fasta"):
+            self.protein_seqs[record.id] = str(record.seq)
+
         # Step 2: Mask functional genes
-        self.logger.info("Masking functional genes in the genome")
+        self.logger.info("Masking functional genes in the genome...")
         genes_masked__genome = mask_genes(self.gff_file, self.genome_file, self.mask_genes_dir, self.logger)
 
+        # Load genome sequences
+        self.genome_seqs = {}
+        for record in SeqIO.parse(genes_masked__genome, "fasta"):
+            self.genome_seqs[record.id] = str(record.seq).upper()
+
         # Step 3: Homology search
-        self.logger.info("Running homology search with tblastn")
-        blast_out = run_tblastn(genes_masked__genome, self.protein_file, self.evalue,
-                                     self.threads, self.max_intron_length, self.blast_dir, self.logger)
+        self.logger.info("Running homology search with tblastn...")
+        blast_out = run_tblastn(genes_masked__genome, self.protein_file, self.threads, 
+                                self.max_intron_length, self.blast_dir, self.logger)
         # blast_out = os.path.join(self.blast_dir, "tblastn_out/tblastn_results.tsv")
 
         # Step 4: Filter and merge hits
-        self.logger.info("Filtering and merging BLAST hits")
+        self.logger.info("Filtering and merging BLAST hits...")
         filtered_hits_file = filter_hits(blast_out, self.filter_and_merge_dir, self.logger)
         exons_file = create_exons(filtered_hits_file, self.filter_and_merge_dir, self.logger)
-        exon_clusters = create_clusters(exons_file, self.protein_file, self.max_intron_length, self.logger)
+        exon_clusters = create_clusters(exons_file, self.protein_seqs, self.max_intron_length, self.logger)
 
         # Step 5: Precise re-alignment with tfasty
-        self.logger.info("Running precise re-alignment with tfasty")
-        run_tfasty(exon_clusters, self.protein_file, genes_masked__genome, self.tfasty_dir, self.logger)
+        self.logger.info("Running precise re-alignment with tfasty and filtering...")
+        pseudogenes = run_tfasty(exon_clusters, self.protein_seqs, self.genome_seqs, self.evalue, self.coverage, self.identity, self.tfasty_dir, self.logger)
 
-        # # Step 6: Classify pseudogenes
-        # self.logger.info("Classifying pseudogenes")
-        # classified_pseudogenes = self.classify_pseudogenes()
+        # Step 6: Classify pseudogenes
+        self.logger.info("Classifying pseudogenes...")
+        classified_pseudogenes = classify_pseudogenes(pseudogenes, self.genome_seqs, self.logger)
 
-        # # Step 7: Generate final report
-        # self.logger.info("Generating final pseudogene annotations")
-        # self.generate_output(classified_pseudogenes)
+        # Step 7: Generate final reports
+        self.logger.info("Generating final pseudogene reports...")
+        generate_output(classified_pseudogenes, self.genome_seqs, self.results_dir)
 
         self.logger.info("Pseudoscope pipeline completed successfully")
-        self.logger.info(f"Results can be found in: {self.output_dir}")
+        self.logger.info(f"Results can be found in: {self.results_dir}")
 
 def main():
     parser = argparse.ArgumentParser(description='Pseudoscope - A Pseudogene Identification Pipeline')
     parser.add_argument('-g', '--genome', required=True, help='Path to genome FASTA file')
     parser.add_argument('-a', '--annotation', required=True, help='Path to genome annotation GFF file')
     parser.add_argument('-p', '--proteins', help='Path to protein FASTA file (optional)')
-    parser.add_argument('-o', '--output', default='./pseudoscope_output', help='Output directory')
-    parser.add_argument('-e', '--evalue', type=float, default=0.01, help='E-value threshold for BLAST')
-    parser.add_argument('-m', '--max-intron', type=int, default=10000, help='Maximum allowed intron length')
-    parser.add_argument('-t', '--threads', type=int, default=8, help='Number of threads to use')
+    parser.add_argument('-out', '--output', default='./pseudoscope_output', help='Output directory')
+    parser.add_argument('-mi', '--max-intron', type=int, default=10000, help='Maximum allowed intron length')
+    parser.add_argument('-e', '--evalue', type=float, default=1e-5, help='E-value threshold for filtering')
+    parser.add_argument('-cov', '--coverage', type=float, default=0.05, help='Coverage threshold for filtering')
+    parser.add_argument('-id', '--identity', type=float, default=0.2, help='Identity threshold for filtering')
+    parser.add_argument('-t', '--threads', type=int, default=1, help='Number of threads to use')
     parser.add_argument('-v', '--version', action='version', version=f'%(prog)s {__version__}')
     
     args = parser.parse_args()
@@ -132,11 +148,13 @@ def main():
     pipeline = Pseudoscope(
         genome_file=args.genome,
         gff_file=args.annotation,
-        protein_file=args.proteins,
         output_dir=args.output,
-        evalue=args.evalue,
         max_intron_length=args.max_intron,
-        threads=args.threads
+        evalue=args.evalue,
+        coverage=args.coverage,
+        identity=args.identity,
+        threads=args.threads,
+        protein_file=args.proteins
     )
     
     pipeline.run()
