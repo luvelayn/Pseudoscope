@@ -5,6 +5,7 @@ A command-line tool for automated identification and annotation of pseudogenes
 in genomic sequences, based on homology search and structural analysis.
 """
 
+import shutil
 from utils._setup_logging import _setup_logging
 from utils._check_dependencies import _check_dependencies
 from core.extract_proteins import extract_proteins
@@ -66,6 +67,7 @@ class Pseudoscope:
 
         # Set up working directory
         self.temp_dir = os.path.join(self.output_dir, "tmp")
+        self.logs_dir = os.path.join(self.output_dir, "logs")
         self.results_dir = os.path.join(self.output_dir, "results")
         self.mask_genes_dir = os.path.join(self.temp_dir, "mask_genes_out")
         self.extract_proteins_dir = os.path.join(self.temp_dir, "extract_proteins_out")
@@ -75,8 +77,9 @@ class Pseudoscope:
         )
         self.tfasty_dir = os.path.join(self.temp_dir, "tfasty_out")
         os.makedirs(self.output_dir, exist_ok=True)
-        os.makedirs(self.results_dir, exist_ok=True)
         os.makedirs(self.temp_dir, exist_ok=True)
+        os.makedirs(self.logs_dir, exist_ok=True)
+        os.makedirs(self.results_dir, exist_ok=True)
         os.makedirs(self.mask_genes_dir, exist_ok=True)
         os.makedirs(self.extract_proteins_dir, exist_ok=True)
         os.makedirs(self.blast_dir, exist_ok=True)
@@ -84,7 +87,7 @@ class Pseudoscope:
         os.makedirs(self.tfasty_dir, exist_ok=True)
 
         # Set up logging
-        self.logger = _setup_logging(self.output_dir)
+        self.logger = _setup_logging(self.logs_dir)
 
         # Check for required tools
         _check_dependencies(self.logger)
@@ -149,7 +152,6 @@ class Pseudoscope:
             self.blast_dir,
             self.logger,
         )
-        # blast_out = os.path.join(self.blast_dir, "tblastn_out/tblastn_results.tsv")
 
         # Step 4: Filter and merge hits
         self.logger.info("Filtering and merging BLAST hits...")
@@ -190,9 +192,10 @@ class Pseudoscope:
             refined_pseudogenes, self.genome_seqs, self.logger
         )
 
-        # Step 8: Generate final reports
+        # Step 8: Generate final reports and clean tmp directory
         self.logger.info("Generating final pseudogene reports...")
         generate_output(classified_pseudogenes, self.genome_seqs, self.results_dir)
+        shutil.rmtree(self.temp_dir)
 
         self.logger.info("Pseudoscope pipeline completed successfully")
         self.logger.info(f"Results can be found in: {self.results_dir}")
