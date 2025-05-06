@@ -222,31 +222,31 @@ def main():
         "--max-intron",
         type=int,
         default=10000,
-        help="Maximum allowed intron length",
+        help="Maximum allowed intron length (default: 10000)",
     )
     parser.add_argument(
         "-e",
         "--evalue",
         type=float,
         default=1e-5,
-        help="E-value threshold for filtering",
+        help="E-value threshold for filtering (default: 1e-5)",
     )
     parser.add_argument(
         "-cov",
         "--coverage",
         type=float,
         default=0.05,
-        help="Coverage threshold for filtering",
+        help="Coverage threshold for filtering (default: 0.05)",
     )
     parser.add_argument(
         "-id",
         "--identity",
         type=float,
         default=0.2,
-        help="Identity threshold for filtering",
+        help="Identity threshold for filtering (default: 0.2)",
     )
     parser.add_argument(
-        "-t", "--threads", type=int, default=1, help="Number of threads to use"
+        "-t", "--threads", type=int, default=4, help="Number of threads to use (default: 4)"
     )
     parser.add_argument(
         "-v", "--version", action="version", version=f"%(prog)s {__version__}"

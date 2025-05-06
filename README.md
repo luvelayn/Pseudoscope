@@ -73,7 +73,7 @@ Arguments:
   -e, --evalue       E-value threshold for filtering (default: 1e-5)
   -cov, --coverage   Coverage threshold for filtering (default: 0.05)
   -id, --identity    Identity threshold for filtering (default: 0.2)
-  -t, --threads      Number of threads to use (default: 1)
+  -t, --threads      Number of threads to use (default: 4)
   -v, --version      Show program's version number and exit
 ```
 
