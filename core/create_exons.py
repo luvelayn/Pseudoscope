@@ -131,7 +131,7 @@ def create_exons(input_tsv, out_dir, logger):
             # Move to the next unprocessed hit
             i = j
 
-    logger.info(f"Hits merged into exons, {len(exons)} exons created")
+    logger.info(f"  Hits merged into exons: {len(exons)} exons created")
 
     # Save exons to file
     try:

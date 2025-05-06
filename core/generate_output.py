@@ -22,7 +22,6 @@ def generate_output(pseudogene_results, genome_seqs, output_dir):
                 f.write(f"{pg['chrom']}\tpseudoscope\texon\t{exon['start']}\t"
                         f"{exon['end']}\t{exon['score']}\t{exon['strand']}\t.\t"
                         f"ID={exon['id']};Parent={pg['id']};"
-                        f"protein_range={exon['protein_range']};"
                         f"frameshifts={exon['frameshifts']};insertions={exon['insertions']};"
                         f"deletions={exon['deletions']};stop_codons={exon['stop_codons']}\n")
 

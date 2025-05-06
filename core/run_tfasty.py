@@ -159,7 +159,7 @@ def run_tfasty(exon_clusters, protein_seqs, genome_seqs, evalue, coverage, ident
                 'coverage': merged_pseudogene['coverage']
             })
     
-    logger.info(f"Completed tfasty re-alignment, remained {len(pseudogene_results)} pseudogenes")
+    logger.info(f"Completed tfasty re-alignment: {len(pseudogene_results)} pseudogenes remained")
     
     return pseudogene_results
 

@@ -13,6 +13,7 @@ from core.filter_hits import filter_hits
 from core.create_exons import create_exons
 from core.create_clusters import create_clusters
 from core.run_tfasty import run_tfasty
+from core.refine_exon_structure import refine_exon_structure
 from core.classify_pseudogenes import classify_pseudogenes
 from core.generate_output import generate_output
 
@@ -117,13 +118,17 @@ class Pseudoscope:
 
         # Step 5: Precise re-alignment with tfasty
         self.logger.info("Running precise re-alignment with tfasty and filtering...")
-        pseudogenes = run_tfasty(exon_clusters, self.protein_seqs, self.genome_seqs, self.evalue, self.coverage, self.identity, self.tfasty_dir, self.logger)
+        tfasty_pseudogenes = run_tfasty(exon_clusters, self.protein_seqs, self.genome_seqs, self.evalue, self.coverage, self.identity, self.tfasty_dir, self.logger)
 
-        # Step 6: Classify pseudogenes
+        # Step 6: Refine intron-exon structure
+        self.logger.info("Refining intron-exon structure based on canonical splice sites...")
+        refined_pseudogenes = refine_exon_structure(tfasty_pseudogenes, self.genome_seqs, self.logger)
+
+        # Step 7: Classify pseudogenes
         self.logger.info("Classifying pseudogenes...")
-        classified_pseudogenes = classify_pseudogenes(pseudogenes, self.genome_seqs, self.logger)
+        classified_pseudogenes = classify_pseudogenes(refined_pseudogenes, self.genome_seqs, self.logger)
 
-        # Step 7: Generate final reports
+        # Step 8: Generate final reports
         self.logger.info("Generating final pseudogene reports...")
         generate_output(classified_pseudogenes, self.genome_seqs, self.results_dir)
 

@@ -166,11 +166,11 @@ def create_clusters(input_tsv, protein_seqs, max_intron_length, logger):
             # Move to the next unprocessed exon
             i = j
 
-    logger.info(f"Exons merged into clusters, {len(pseudogenes)} clusters created")
+    logger.info(f"  Exons merged into clusters: {len(pseudogenes)} clusters created")
 
     # Filtering out overlapping pseudogenes
     non_overlapping_pgs = _resolve_overlapping(pseudogenes)
-    logger.info(f"Overlapping clusters filtered, {len(non_overlapping_pgs)} clusters retained")
+    logger.info(f"  Overlapping clusters filtered: {len(non_overlapping_pgs)} clusters retained")
     
     exon_clusters = []
     for pg in non_overlapping_pgs: 

@@ -1,5 +1,4 @@
 from collections import defaultdict
-from Bio import SeqIO
 
 def classify_pseudogenes(pseudogene_results, genome_seqs, logger):
     """Classify pseudogenes into different types based on their features.
@@ -22,7 +21,7 @@ def classify_pseudogenes(pseudogene_results, genome_seqs, logger):
     # Set parameters
     coverage_threshold=0.5
     polya_window=20
-    polya_min_count=15
+    polya_min_count=14
     polya_search_range=500
     
     # Sort pseudogenes by chromosome and position for detecting adjacent pseudogenes
@@ -67,13 +66,13 @@ def classify_pseudogenes(pseudogene_results, genome_seqs, logger):
                 search_end = min(search_end, len(genome_seqs[chrom]))
                 
                 # Get the sequence to search in
-                search_seq = genome_seqs[chrom][search_start:search_end]
+                search_seq = genome_seqs[chrom][search_start:search_end].lower()
                 
                 # Look for a 20-base window with at least 15 'A's
                 has_polya = False
                 for i in range(len(search_seq) - polya_window + 1):
                     window = search_seq[i:i+polya_window]
-                    if window.count('A') >= polya_min_count:
+                    if window.count('a') >= polya_min_count:
                         has_polya = True
                         break
                 
@@ -88,13 +87,13 @@ def classify_pseudogenes(pseudogene_results, genome_seqs, logger):
                         search_start = other_pg['end']
                 
                 # Get the sequence to search in
-                search_seq = genome_seqs[chrom][search_start:search_end]
+                search_seq = genome_seqs[chrom][search_start:search_end].lower()
                 
                 # Look for a 20-base window with at least 15 'T's (reverse complement of poly-A)
                 has_polya = False
                 for i in range(len(search_seq) - polya_window + 1):
                     window = search_seq[i:i+polya_window]
-                    if window.count('T') >= polya_min_count:
+                    if window.count('t') >= polya_min_count:
                         has_polya = True
                         break
             
