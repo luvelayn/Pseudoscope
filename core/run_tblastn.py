@@ -4,7 +4,24 @@ import sys
 
 
 def _format_blast_out(blast_out, logger):
-        """Format BLAST output"""
+        """
+        Format BLAST output for consistency.
+        
+        Adds descriptive headers and normalizes sequence identifiers
+        to ensure consistent downstream processing.
+        
+        Parameters:
+        -----------
+        blast_out : str
+            Path to the BLAST output file
+        logger : logging.Logger
+            Logger object for reporting
+            
+        Returns:
+        --------
+        None
+            Modifications are made in-place to the BLAST output file
+        """
         # Add description line
         with open(blast_out, 'r') as f:
             existing_lines = f.readlines()
@@ -29,7 +46,32 @@ def _format_blast_out(blast_out, logger):
             sys.exit(1)
 
 def run_tblastn(genes_masked__genome, protein_file, threads, max_intron_length, out_dir, logger):
-        """Run tblastn to align proteins to genome"""
+        """
+        Run tblastn to align proteins to genome.
+        
+        Prepares a BLAST database with soft-masking for low-complexity regions,
+        then runs TBLASTN with parameters optimized for pseudogene detection.
+        
+        Parameters:
+        -----------
+        genes_masked__genome : str
+            Path to the genome file with coding genes masked
+        protein_file : str
+            Path to the protein FASTA file
+        threads : int
+            Number of threads to use for BLAST
+        max_intron_length : int
+            Maximum allowed intron length for TBLASTN
+        out_dir : str
+            Directory to store output files
+        logger : logging.Logger
+            Logger object for reporting
+            
+        Returns:
+        --------
+        str
+            Path to the formatted TBLASTN output file
+        """
         # Create masking information for low-compexity regions soft-masking
         mask_dir = os.path.join(out_dir, "mask_info")
         os.makedirs(mask_dir, exist_ok=True)

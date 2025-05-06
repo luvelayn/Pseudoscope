@@ -2,12 +2,46 @@ import os
 import sys
 
 def _calculate_identity_threshold(alignment_length):
-        """Calculate dynamic identity threshold based on alignment length"""
+        """
+        Calculate dynamic identity threshold based on alignment length.
+        
+        Implements a sliding scale where shorter alignments require higher
+        identity percentages to be considered valid.
+        
+        Parameters:
+        -----------
+        alignment_length : int
+            Length of the alignment
+            
+        Returns:
+        --------
+        float
+            Identity threshold percentage
+        """
         threshold = max(75 - ((alignment_length - 20) * 0.6875), 20)
         return threshold
 
 def filter_hits(tblastn_file, out_dir, logger):
-        """Filter BLAST hits based on identity threshold and add strand information"""
+        """
+        Filter BLAST hits based on identity threshold and add strand information.
+        
+        Applies dynamic identity thresholds based on alignment length, adds
+        strand information, and writes filtered hits to output file.
+        
+        Parameters:
+        -----------
+        tblastn_file : str
+            Path to the TBLASTN output file
+        out_dir : str
+            Directory to store output files
+        logger : logging.Logger
+            Logger object for reporting
+            
+        Returns:
+        --------
+        str
+            Path to the filtered hits file
+        """
         filtered_hits = []
         
         # Load BLAST results
@@ -52,7 +86,7 @@ def filter_hits(tblastn_file, out_dir, logger):
                             'evalue': evalue
                         })
         
-            logger.info(f"  BLAST hits filtered: {len(filtered_hits)} hits retained")
+            logger.info(f"BLAST hits filtered: {len(filtered_hits)} hits retained")
             
             # Save filtered hits to file
             filtered_hits_file = os.path.join(out_dir, "filtered_hits.tsv")

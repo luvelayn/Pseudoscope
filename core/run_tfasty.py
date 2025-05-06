@@ -3,30 +3,35 @@ import subprocess
 import tempfile
 
 def run_tfasty(exon_clusters, protein_seqs, genome_seqs, evalue, coverage, identity, out_dir, logger):
-    """Run precise re-alignment with tfasty for each exon separately, then merge into pseudogenes
+    """
+    Run precise re-alignment with tfasty for each exon separately, then merge into pseudogenes.
+    
+    Performs detailed alignments of protein sequences to potential pseudogene regions,
+    incorporating frameshift detection and filtering based on quality thresholds.
     
     Parameters:
     -----------
     exon_clusters : list of lists
         Each inner list contains dictionaries representing exons of a pseudogene
-        [
-            [
-                {'protein': 'protA', 'chrom': 'chr1', 'start': 1000, 'end': 1500, 'strand': '-', 'evalue': 9.26e-17},
-                {'protein': 'protA', 'chrom': 'chr1', 'start': 1700, 'end': 2000', 'strand': '-', 'evalue': 9.26e-17}
-            ],
-            [
-                {'protein': 'protB', 'chrom': 'chr2', 'start': 5000, 'end': 5200', 'strand': '+', 'evalue': 9.26e-17}
-            ],
-            ...
-        ]
-    protein_file : str
-        Path to the protein fasta file
-    genome_file : str
-        Path to the genome fasta file
+    protein_seqs : dict
+        Dictionary mapping protein IDs to their sequences
+    genome_seqs : dict
+        Dictionary mapping chromosome IDs to their sequences
+    evalue : float
+        E-value threshold for filtering
+    coverage : float
+        Coverage threshold for filtering
+    identity : float
+        Identity threshold for filtering
     out_dir : str
         Directory to store output files
     logger : logging.Logger
         Logger object for reporting
+        
+    Returns:
+    --------
+    list
+        List of dictionaries, each representing a refined pseudogene
     """
     if not exon_clusters:
         logger.warning("No pseudogene candidates for re-alignment")
@@ -164,7 +169,26 @@ def run_tfasty(exon_clusters, protein_seqs, genome_seqs, evalue, coverage, ident
     return pseudogene_results
 
 def _parse_tfasty_output(tfasty_output, exon_info, logger):
-    """Parse tfasty output (format 10) and extract alignment information"""
+    """
+    Parse tfasty output (format 10) and extract alignment information.
+    
+    Extracts detailed alignment data from TFASTY output, including coordinates,
+    scores, and mutation statistics (frameshifts, stop codons, indels).
+    
+    Parameters:
+    -----------
+    tfasty_output : str
+        Path to the TFASTY output file
+    exon_info : dict
+        Dictionary containing information about the exon being aligned
+    logger : logging.Logger
+        Logger object for reporting
+        
+    Returns:
+    --------
+    dict
+        Alignment information extracted from TFASTY output
+    """
     alignments = []
     
     try:
@@ -317,7 +341,32 @@ def _parse_tfasty_output(tfasty_output, exon_info, logger):
     return []
 
 def _merge_exons(pseudogene_id, exon_results, chrom, protein, strand, protein_seqs):
-    """Merge aligned exons from the same cluster into a pseudogene"""
+    """
+    Merge aligned exons from the same cluster into a pseudogene.
+    
+    Integrates multiple exon alignments into a cohesive pseudogene model,
+    calculating aggregate metrics and organizing exon structures.
+    
+    Parameters:
+    -----------
+    pseudogene_id : str
+        Unique identifier for the pseudogene
+    exon_results : list
+        List of dictionaries containing alignment information for each exon
+    chrom : str
+        Chromosome identifier
+    protein : str
+        Protein identifier
+    strand : str
+        Strand direction ('+' or '-')
+    protein_seqs : dict
+        Dictionary mapping protein IDs to their sequences
+        
+    Returns:
+    --------
+    dict
+        Merged pseudogene information
+    """
     if not exon_results:
         return None
     

@@ -76,7 +76,24 @@ class Pseudoscope:
         _check_dependencies(self.logger)
 
     def run(self):
-        """Run the complete pseudogene identification pipeline"""
+        """
+        Run the complete pseudogene identification pipeline.
+        
+        Executes all steps in sequence:
+        1. Extract proteins from genome annotation (if not provided)
+        2. Mask functional genes in the genome
+        3. Run homology search with tblastn
+        4. Filter and merge BLAST hits
+        5. Run precise re-alignment with tfasty
+        6. Refine exon structure
+        7. Classify pseudogenes
+        8. Generate final reports
+        
+        Returns:
+        --------
+        None
+            Results are written to the specified output directory
+        """
         self.logger.info(f"Starting Pseudoscope v{__version__}")
         self.logger.info(f"Genome file: {self.genome_file}")
         self.logger.info(f"GFF file: {self.gff_file}")

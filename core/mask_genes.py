@@ -3,7 +3,28 @@ import subprocess
 import sys
 
 def mask_genes(gff_file, genome_file, out_dir, logger):
-        """Mask coding gene regions in the genome using bedtools"""
+        """
+        Mask coding gene regions in the genome using bedtools.
+        
+        Extracts protein-coding gene annotations and uses bedtools to hard-mask
+        these regions in the genome sequence to prevent false positive identifications.
+        
+        Parameters:
+        -----------
+        gff_file : str
+            Path to the genome annotation GFF file
+        genome_file : str
+            Path to the genome FASTA file
+        out_dir : str
+            Directory to store output files
+        logger : logging.Logger
+            Logger object for reporting
+            
+        Returns:
+        --------
+        str
+            Path to the masked genome file
+        """
         # Extract protein coding genes from GFF annotation file
         logger.debug("Extracting protein coding genes from GFF file")
         

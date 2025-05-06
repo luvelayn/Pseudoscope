@@ -39,7 +39,7 @@ def refine_exon_structure(pseudogenes, genome_seqs, logger):
     ACCEPTOR_SITE = "AG"   # 3' splice site ends with AG
     
     # Context size to extract around splice sites for better detection
-    SPLICE_CONTEXT = 10     # ±SPLICE_CONTEXT bp around the splice site
+    SPLICE_CONTEXT = 4     # ±SPLICE_CONTEXT bp around the splice site
     
     refined_pseudogenes = []
     merged_count = 0

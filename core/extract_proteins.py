@@ -4,7 +4,28 @@ import sys
 
 
 def extract_proteins(genome_file, gff_file, out_file, logger):
-        """Extract protein sequences from genome using GFF annotation"""
+        """
+        Extract protein sequences from genome using GFF annotation.
+        
+        Uses gffread to extract protein-coding sequences from the genome 
+        based on the annotation, then formats headers for downstream analysis.
+        
+        Parameters:
+        -----------
+        genome_file : str
+            Path to the genome FASTA file
+        gff_file : str
+            Path to the genome annotation GFF file
+        out_file : str
+            Path for the output protein FASTA file
+        logger : logging.Logger
+            Logger object for reporting
+            
+        Returns:
+        --------
+        None
+            Extracted proteins are written to the specified output file
+        """
         # Extract proteins
         gffread_cmd = ['gffread', '-S', '--no-pseudo', '-y', out_file, '-g', genome_file, gff_file]
 
