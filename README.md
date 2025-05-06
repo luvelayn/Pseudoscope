@@ -101,7 +101,7 @@ output_directory/
 ├── logs/
 │   └── pseudoscope.log
 ├── results/
-│   ├── pseudogenes.bed
+│   ├── pseudogenes.tsv
 │   ├── pseudogenes.gff
 │   └── pseudogenes.fasta
 ```
