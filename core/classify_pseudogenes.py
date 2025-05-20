@@ -27,7 +27,7 @@ def classify_pseudogenes(pseudogene_results, genome_seqs, logger):
     # Set parameters
     coverage_threshold = 0.5
     polya_window = 20
-    polya_min_count = 14
+    polya_min_count = 11
     polya_search_range = 500
 
     # Sort pseudogenes by chromosome and position for detecting adjacent pseudogenes

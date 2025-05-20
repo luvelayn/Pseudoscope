@@ -47,7 +47,7 @@ def _format_blast_out(blast_out, logger):
 
 
 def run_tblastn(
-    genes_masked__genome, protein_file, threads, max_intron_length, out_dir, logger
+    genes_masked__genome, protein_file, threads, out_dir, logger
 ):
     """
     Run tblastn to align proteins to genome.
@@ -63,8 +63,6 @@ def run_tblastn(
         Path to the protein FASTA file
     threads : int
         Number of threads to use for BLAST
-    max_intron_length : int
-        Maximum allowed intron length for TBLASTN
     out_dir : str
         Directory to store output files
     logger : logging.Logger
@@ -163,9 +161,7 @@ def run_tblastn(
         "-word_size",
         "3",
         "-gapextend",
-        "2",
-        "-max_intron_length",
-        str(max_intron_length),
+        "2"
     ]
 
     logger.debug(f"Running command: {' '.join(tblastn_cmd)}")
