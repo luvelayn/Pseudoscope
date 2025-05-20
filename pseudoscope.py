@@ -148,7 +148,6 @@ class Pseudoscope:
             genes_masked__genome,
             self.protein_file,
             self.threads,
-            self.max_intron_length,
             self.blast_dir,
             self.logger,
         )
