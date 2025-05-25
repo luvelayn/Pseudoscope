@@ -25,7 +25,7 @@ def classify_pseudogenes(pseudogene_results, genome_seqs, logger):
         Types are: "retrotransposed", "duplicated", or "fragment".
     """
     # Set parameters
-    coverage_threshold = 0.5
+    coverage_threshold = 0.7
     polya_window = 20
     polya_min_count = 11
     polya_search_range = 500

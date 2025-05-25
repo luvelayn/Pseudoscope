@@ -1,4 +1,6 @@
 */__pycache__
-pseudoscope_output
-test_data/TAIR10
+/pseudoscope_output
+/test_data/TAIR10
 /dev_scripts
+/analyzer_results
+*.tsv

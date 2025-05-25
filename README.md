@@ -71,8 +71,8 @@ Arguments:
   -out, --output     Output directory (default: ./pseudoscope_output)
   -mi, --max-intron  Maximum allowed intron length (default: 10000)
   -e, --evalue       E-value threshold for filtering (default: 1e-5)
-  -cov, --coverage   Coverage threshold for filtering (default: 0.05)
-  -id, --identity    Identity threshold for filtering (default: 0.2)
+  -cov, --coverage   Coverage threshold for filtering (default: 0.1)
+  -id, --identity    Identity threshold for filtering (default: 0.4)
   -t, --threads      Number of threads to use (default: 4)
   -v, --version      Show program's version number and exit
 ```

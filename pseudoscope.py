@@ -234,15 +234,15 @@ def main():
         "-cov",
         "--coverage",
         type=float,
-        default=0.05,
-        help="Coverage threshold for filtering (default: 0.05)",
+        default=0.1,
+        help="Coverage threshold for filtering (default: 0.1)",
     )
     parser.add_argument(
         "-id",
         "--identity",
         type=float,
-        default=0.2,
-        help="Identity threshold for filtering (default: 0.2)",
+        default=0.4,
+        help="Identity threshold for filtering (default: 0.4)",
     )
     parser.add_argument(
         "-t", "--threads", type=int, default=4, help="Number of threads to use (default: 4)"
